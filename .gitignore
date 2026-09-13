@@ -1,0 +1,47 @@
+*.p12
+*.mobileprovision
+*.p8
+*.key
+.env
+.env.*
+!.env.example
+
+# Local agent working files
+/docs/superpowers/
+/.superpowers/
+/.worktrees/
+/.codex/
+
+# Build and test output (keep go.mod and go.sum tracked)
+/bin/
+/dist/
+/coverage/
+coverage.out
+*.test
+
+# Private server data, books, backups, and credentials
+/data/
+/library/
+/uploads/
+/backups/
+*.epub
+*.sqlite
+*.sqlite3
+*.db
+*.db-shm
+*.db-wal
+*.sqlite-shm
+*.sqlite-wal
+*.pfx
+*.pem
+*.log
+
+# Redistributable test fixtures must be explicitly curated
+!/tests/fixtures/**/*.epub
+
+# Local editor and OS files
+/.idea/
+/.vscode/
+.DS_Store
+Thumbs.db
+Desktop.ini
