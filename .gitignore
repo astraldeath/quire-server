@@ -18,6 +18,8 @@
 /coverage/
 coverage.out
 *.test
+/quire-server
+/quire-server.exe
 
 # Private server data, books, backups, and credentials
 /data/
@@ -45,3 +47,8 @@ coverage.out
 .DS_Store
 Thumbs.db
 Desktop.ini
+
+# Local planning documents
+/docs/architecture.md
+/docs/plans/
+/docs/specs/
