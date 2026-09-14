@@ -290,12 +290,15 @@ func inside(root, path string) bool {
 	return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)) && !filepath.IsAbs(relative)
 }
 func (s *Store) ScanWatch(id string) (scanErr error) {
+	imported, existing, skipped := 0, 0, 0
 	defer func() {
 		message := ""
 		if scanErr != nil {
 			message = scanErr.Error()
+			imported = 0
+			existing = 0
 		}
-		_, _ = s.db.Exec("INSERT INTO scan_status VALUES (?,?,?) ON CONFLICT(watch_id) DO UPDATE SET last_at=excluded.last_at,error=excluded.error", id, time.Now().Unix(), message)
+		_, _ = s.db.Exec("INSERT INTO scan_status(watch_id,last_at,error,imported,existing,skipped) VALUES (?,?,?,?,?,?) ON CONFLICT(watch_id) DO UPDATE SET last_at=excluded.last_at,error=excluded.error,imported=excluded.imported,existing=excluded.existing,skipped=excluded.skipped", id, time.Now().Unix(), message, imported, existing, skipped)
 	}()
 
 	s.fileMu.Lock()
@@ -321,9 +324,14 @@ func (s *Store) ScanWatch(id string) (scanErr error) {
 			return walkErr
 		}
 		if entry.Type()&os.ModeSymlink != 0 {
+			skipped++
 			return nil
 		}
-		if entry.IsDir() || !strings.EqualFold(filepath.Ext(path), ".epub") {
+		if entry.IsDir() {
+			return nil
+		}
+		if !strings.EqualFold(filepath.Ext(path), ".epub") {
+			skipped++
 			return nil
 		}
 		if len(items) >= 10000 {
@@ -376,6 +384,22 @@ func (s *Store) ScanWatch(id string) (scanErr error) {
 		return err
 	}
 	defer tx.Rollback()
+	seen := map[string]bool{}
+	for _, item := range items {
+		if seen[item.book] {
+			continue
+		}
+		seen[item.book] = true
+		var n int
+		if err = tx.QueryRow("SELECT count(*) FROM files WHERE user_id=? AND book_id=?", user, item.book).Scan(&n); err != nil {
+			return err
+		}
+		if n > 0 {
+			existing++
+		} else {
+			imported++
+		}
+	}
 	if _, err = tx.Exec("DELETE FROM files WHERE user_id=? AND kind='watch' AND source LIKE ?", user, id+"/%"); err != nil {
 		return err
 	}
@@ -471,6 +495,9 @@ func (s *Store) RemoveWatch(id string) error {
 		return err
 	}
 	if _, err = tx.Exec("DELETE FROM files WHERE user_id=? AND kind='watch' AND source LIKE ?", user, id+"/%"); err != nil {
+		return err
+	}
+	if _, err = tx.Exec("DELETE FROM scan_status WHERE watch_id=?", id); err != nil {
 		return err
 	}
 	if _, err = tx.Exec("DELETE FROM watch_roots WHERE id=?", id); err != nil {

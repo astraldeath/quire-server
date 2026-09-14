@@ -64,6 +64,7 @@ func (s *Store) sharedSeeds(user string) error {
 	return tx.Commit()
 }
 func (a *api) libraryRoutes(mux *http.ServeMux) {
+	a.libraryManagementRoutes(mux)
 	mux.HandleFunc("GET /v1/admin/libraries/{library}/books", func(w http.ResponseWriter, r *http.Request) {
 		if a.admin(w, r) == "" {
 			return

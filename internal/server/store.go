@@ -39,7 +39,7 @@ func Open(path string) (*Store, error) {
 	if err = db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return fail(err)
 	}
-	if version > 5 {
+	if version > 6 {
 		return fail(errors.New("database was created by a newer server"))
 	}
 	if version == 0 {
@@ -92,6 +92,12 @@ PRAGMA user_version=1;`)
 	}
 	if version < 5 {
 		_, err = db.Exec(`BEGIN;CREATE TABLE server_settings(id INTEGER PRIMARY KEY CHECK(id=1),name TEXT NOT NULL,scan_seconds INTEGER NOT NULL);CREATE TABLE scan_status(watch_id TEXT PRIMARY KEY,last_at INTEGER NOT NULL,error TEXT NOT NULL);PRAGMA user_version=5;COMMIT;`)
+		if err != nil {
+			return fail(err)
+		}
+	}
+	if version < 6 {
+		_, err = db.Exec(`BEGIN;ALTER TABLE scan_status ADD COLUMN imported INTEGER NOT NULL DEFAULT 0;ALTER TABLE scan_status ADD COLUMN existing INTEGER NOT NULL DEFAULT 0;ALTER TABLE scan_status ADD COLUMN skipped INTEGER NOT NULL DEFAULT 0;PRAGMA user_version=6;COMMIT;`)
 		if err != nil {
 			return fail(err)
 		}

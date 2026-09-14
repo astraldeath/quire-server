@@ -64,7 +64,7 @@ func (a *api) settingsRoutes(mux *http.ServeMux, name string) {
 		if a.admin(w, r) == "" {
 			return
 		}
-		rows, err := a.store.db.Query("SELECT watch_id,last_at,error FROM scan_status")
+		rows, err := a.store.db.Query("SELECT watch_id,last_at,error,imported,existing,skipped FROM scan_status")
 		if err != nil {
 			failure(w, err)
 			return
@@ -74,11 +74,12 @@ func (a *api) settingsRoutes(mux *http.ServeMux, name string) {
 		for rows.Next() {
 			var id, message string
 			var at int64
-			if err = rows.Scan(&id, &at, &message); err != nil {
+			var imported, existing, skipped int
+			if err = rows.Scan(&id, &at, &message, &imported, &existing, &skipped); err != nil {
 				failure(w, err)
 				return
 			}
-			out = append(out, map[string]any{"id": id, "lastAt": at, "error": message})
+			out = append(out, map[string]any{"id": id, "lastAt": at, "error": message, "imported": imported, "existing": existing, "skipped": skipped})
 		}
 		if err = rows.Err(); err != nil {
 			failure(w, err)

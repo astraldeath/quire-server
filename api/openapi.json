@@ -1607,6 +1607,63 @@
           }
         }
       }
+    },
+    "/v1/admin/libraries/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "patch": {
+        "summary": "Rename a shared library (administrator)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Renamed"
+          },
+          "403": {
+            "description": "Administrator required"
+          },
+          "404": {
+            "description": "Library not found"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete collection, grants, watches and managed files; preserve member records and watched originals",
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "403": {
+            "description": "Administrator required"
+          }
+        }
+      }
     }
   },
   "components": {

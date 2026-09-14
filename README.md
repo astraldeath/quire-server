@@ -153,3 +153,5 @@ For Docker, add a read-only bind mount such as `/your/library:/library:ro`, then
 Watched EPUBs publish their embedded title, author, and series metadata during scanning. Existing user edits are preserved. Authenticated `GET /v1/books/{id}/metadata` returns embedded metadata and a small JPEG cover preview (up to 320 x 480 pixels), without transferring the EPUB. Cover extraction accepts bounded raster images only; missing or unsupported covers use the reader fallback. No publisher scripts or external URLs are loaded.
 
 Readers cache previews automatically and fetch the EPUB through the existing authenticated file endpoint when a user opens a book. Downloads are hash-verified and stored for offline reading; notes and user metadata are retained.
+
+Shared libraries can be renamed or deleted from Administration. Deleting a library removes its grants, watch registrations, and managed server files, but preserves watched originals and members' own reading records and downloaded copies. Scan history reports newly imported and existing distinct EPUBs plus skipped non-EPUB files/symlinks; failed scans keep the previous catalog.

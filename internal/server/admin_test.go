@@ -143,3 +143,70 @@ func TestAddingWatchScansImmediately(t *testing.T) {
 		t.Fatalf("expected automatic import, got %d books", count)
 	}
 }
+
+func TestLibraryLifecycleKeepsMemberDataAndOriginals(t *testing.T) {
+	s, h := fixture(t)
+	if err := s.Promote("alice"); err != nil {
+		t.Fatal(err)
+	}
+	token := login(t, h, "alice")
+	created := request(t, h, "POST", "/v1/admin/libraries", token, map[string]string{"name": "Original"}, 201)
+	var id string
+	json.Unmarshal(created["id"], &id)
+	request(t, h, "PATCH", "/v1/admin/libraries/"+id, login(t, h, "bob"), map[string]string{"name": "No"}, 403)
+	request(t, h, "PATCH", "/v1/admin/libraries/"+id, token, map[string]string{"name": "Renamed"}, 204)
+	var name, owner string
+	s.db.QueryRow("SELECT name,owner FROM libraries WHERE id=?", id).Scan(&name, &owner)
+	if name != "Renamed" {
+		t.Fatal(name)
+	}
+	root := t.TempDir()
+	original := filepath.Join(root, "book.epub")
+	os.WriteFile(original, epubBytes(), 0600)
+	request(t, h, "POST", "/v1/admin/watches", token, map[string]string{"library": id, "path": root}, 201)
+	var bob string
+	s.db.QueryRow("SELECT id FROM users WHERE username='bob'").Scan(&bob)
+	request(t, h, "PUT", "/v1/admin/libraries/"+id+"/members/"+bob, token, nil, 204)
+	if err := s.sharedSeeds(bob); err != nil {
+		t.Fatal(err)
+	}
+	request(t, h, "DELETE", "/v1/admin/libraries/"+id, token, nil, 204)
+	for _, table := range []string{"libraries", "library_members", "watch_roots", "files"} {
+		var n int
+		s.db.QueryRow("SELECT count(*) FROM " + table).Scan(&n)
+		if n != 0 {
+			t.Fatalf("%s retained %d rows", table, n)
+		}
+	}
+	var n int
+	s.db.QueryRow("SELECT count(*) FROM records WHERE user_id=?", bob).Scan(&n)
+	if n == 0 {
+		t.Fatal("member records lost")
+	}
+	if _, err := os.Stat(original); err != nil {
+		t.Fatal("watched original removed", err)
+	}
+}
+func TestScanReportsImportedExistingAndSkipped(t *testing.T) {
+	s, _ := fixture(t)
+	root := t.TempDir()
+	os.WriteFile(filepath.Join(root, "a.epub"), epubBytes(), 0600)
+	os.WriteFile(filepath.Join(root, "readme.txt"), []byte("ignore"), 0600)
+	id, err := s.AddWatch("alice", root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 2; i++ {
+		if err = s.ScanWatch(id); err != nil {
+			t.Fatal(err)
+		}
+		var imported, existing, skipped int
+		err = s.db.QueryRow("SELECT imported,existing,skipped FROM scan_status WHERE watch_id=?", id).Scan(&imported, &existing, &skipped)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if imported != 1-i || existing != i || skipped != 1 {
+			t.Fatalf("counts %d %d %d", imported, existing, skipped)
+		}
+	}
+}
