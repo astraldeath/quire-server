@@ -1691,6 +1691,41 @@
           }
         }
       }
+    },
+    "/v1/browser/session": {
+      "get": {
+        "summary": "Restore hosted session identity from its HttpOnly cookie",
+        "responses": {
+          "200": {
+            "description": "Username, session ID and expiry"
+          },
+          "401": {
+            "description": "No active cookie session"
+          }
+        }
+      },
+      "post": {
+        "summary": "Sign in with a persistent HttpOnly cookie; requires exact public Origin",
+        "responses": {
+          "201": {
+            "description": "Session metadata and Set-Cookie; no token in JSON"
+          },
+          "403": {
+            "description": "Invalid Origin"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Revoke browser session and clear cookie; requires Origin and X-Quire-Session",
+        "responses": {
+          "204": {
+            "description": "Signed out"
+          },
+          "401": {
+            "description": "Session changed in another tab"
+          }
+        }
+      }
     }
   },
   "components": {

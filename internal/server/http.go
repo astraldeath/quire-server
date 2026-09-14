@@ -18,11 +18,12 @@ type loginWindow struct {
 	until time.Time
 }
 type api struct {
-	setupCode string
-	store     *Store
-	loginMu   sync.Mutex
-	attempts  map[string]loginWindow
-	slots     chan struct{}
+	publicOrigin string
+	setupCode    string
+	store        *Store
+	loginMu      sync.Mutex
+	attempts     map[string]loginWindow
+	slots        chan struct{}
 }
 
 func respond(w http.ResponseWriter, status int, value any) {
@@ -69,6 +70,25 @@ func decode(w http.ResponseWriter, r *http.Request, v any, limit int64) bool {
 }
 func (a *api) authorized(w http.ResponseWriter, r *http.Request) string {
 	auth := r.Header.Get("Authorization")
+	if auth == "" {
+		if _, err := r.Cookie(a.cookieName()); err != nil {
+			failure(w, ErrUnauthorized)
+			return ""
+		}
+		if r.Method != "GET" && r.Method != "HEAD" && !a.browserOrigin(w, r) {
+			return ""
+		}
+		user, session, err := a.cookieSession(r)
+		if err != nil {
+			failure(w, err)
+			return ""
+		}
+		if r.Header.Get("X-Quire-Session") != session.ID {
+			failure(w, ErrUnauthorized)
+			return ""
+		}
+		return user
+	}
 	if !strings.HasPrefix(auth, "Bearer ") {
 		failure(w, ErrUnauthorized)
 		return ""
@@ -114,8 +134,9 @@ func NewHandler(store *Store, publicURL, name string) http.Handler {
 	return NewConfiguredHandler(store, publicURL, name, "")
 }
 func NewConfiguredHandler(store *Store, publicURL, name, setupCode string) http.Handler {
-	a := &api{setupCode: setupCode, store: store, attempts: map[string]loginWindow{}, slots: make(chan struct{}, 2)}
+	a := &api{publicOrigin: strings.TrimRight(publicURL, "/"), setupCode: setupCode, store: store, attempts: map[string]loginWindow{}, slots: make(chan struct{}, 2)}
 	mux := http.NewServeMux()
+	a.browserRoutes(mux)
 	a.fileRoutes(mux)
 	a.backupRoutes(mux)
 	a.adminRoutes(mux)

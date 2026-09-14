@@ -1,6 +1,6 @@
 FROM node:24-alpine AS reader
 RUN apk add --no-cache git
-ARG QUIRE_READER_REF=216a30366817e59801534e1508372d0d4a3c6008
+ARG QUIRE_READER_REF=28ed899a0ebc16215d63d929b1b1e197cda84353
 RUN git clone https://github.com/astraldeath/quire.git /reader \
     && cd /reader && git checkout --detach "$QUIRE_READER_REF"
 WORKDIR /reader
