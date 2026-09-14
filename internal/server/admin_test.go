@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -121,5 +122,24 @@ func TestPasswordChangeRevokesSessions(t *testing.T) {
 	request(t, h, "GET", "/v1/me", token, nil, 401)
 	if _, e = s.Login("member", "replacement password", "test"); e != nil {
 		t.Fatal(e)
+	}
+}
+
+func TestAddingWatchScansImmediately(t *testing.T) {
+	s, h := fixture(t)
+	if err := s.Promote("alice"); err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "book.epub"), epubBytes(), 0600); err != nil {
+		t.Fatal(err)
+	}
+	request(t, h, "POST", "/v1/admin/watches", login(t, h, "alice"), map[string]string{"username": "alice", "path": root}, 201)
+	var count int
+	if err := s.db.QueryRow("SELECT count(*) FROM files").Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("expected automatic import, got %d books", count)
 	}
 }

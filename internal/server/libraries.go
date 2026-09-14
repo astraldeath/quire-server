@@ -278,7 +278,11 @@ func (a *api) libraryRoutes(mux *http.ServeMux) {
 			failure(w, err)
 			return
 		}
-		respond(w, 201, map[string]string{"id": id})
+		scanError := ""
+		if err := a.store.ScanWatch(id); err != nil {
+			scanError = err.Error()
+		}
+		respond(w, 201, map[string]string{"id": id, "scanError": scanError})
 	})
 	mux.HandleFunc("DELETE /v1/admin/watches/{id}", func(w http.ResponseWriter, r *http.Request) {
 		if a.admin(w, r) == "" {
