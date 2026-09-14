@@ -18,10 +18,11 @@ type loginWindow struct {
 	until time.Time
 }
 type api struct {
-	store    *Store
-	loginMu  sync.Mutex
-	attempts map[string]loginWindow
-	slots    chan struct{}
+	setupCode string
+	store     *Store
+	loginMu   sync.Mutex
+	attempts  map[string]loginWindow
+	slots     chan struct{}
 }
 
 func respond(w http.ResponseWriter, status int, value any) {
@@ -110,9 +111,15 @@ func (a *api) allowLogin(remote string) bool {
 	return true
 }
 func NewHandler(store *Store, publicURL, name string) http.Handler {
-	a := &api{store: store, attempts: map[string]loginWindow{}, slots: make(chan struct{}, 2)}
+	return NewConfiguredHandler(store, publicURL, name, "")
+}
+func NewConfiguredHandler(store *Store, publicURL, name, setupCode string) http.Handler {
+	a := &api{setupCode: setupCode, store: store, attempts: map[string]loginWindow{}, slots: make(chan struct{}, 2)}
 	mux := http.NewServeMux()
 	a.fileRoutes(mux)
+	a.adminRoutes(mux)
+	a.libraryRoutes(mux)
+	a.settingsRoutes(mux, name)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		if err := store.db.PingContext(r.Context()); err != nil {
 			respond(w, 503, map[string]string{"status": "unavailable"})
@@ -121,7 +128,12 @@ func NewHandler(store *Store, publicURL, name string) http.Handler {
 		respond(w, 200, map[string]string{"status": "ok"})
 	})
 	mux.HandleFunc("GET /.well-known/quire", func(w http.ResponseWriter, r *http.Request) {
-		respond(w, 200, map[string]any{"name": name, "apiVersion": "1", "apiUrl": strings.TrimRight(publicURL, "/") + "/v1", "registration": "owner-only", "capabilities": []string{"reading-data-sync", "device-sessions", "epub-files", "watched-folders"}})
+		settings, err := store.Settings(ServerSettings{name, 300})
+		if err != nil {
+			failure(w, err)
+			return
+		}
+		respond(w, 200, map[string]any{"name": settings.Name, "apiVersion": "1", "apiUrl": strings.TrimRight(publicURL, "/") + "/v1", "registration": "owner-only", "capabilities": []string{"reading-data-sync", "device-sessions", "epub-files", "watched-folders"}})
 	})
 	mux.HandleFunc("POST /v1/sessions", func(w http.ResponseWriter, r *http.Request) {
 		if !a.allowLogin(r.RemoteAddr) {

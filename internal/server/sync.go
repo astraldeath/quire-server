@@ -130,6 +130,9 @@ func validateOperation(op Operation) error {
 // Sync atomically accepts an outbox batch and returns a bounded page of immutable
 // changes. Revisions are server assigned; device timestamps never pick a winner.
 func (s *Store) Sync(ctx context.Context, user string, req SyncRequest) (SyncResponse, error) {
+	if err := s.sharedSeeds(user); err != nil {
+		return SyncResponse{}, err
+	}
 	if req.Cursor < 0 || len(req.Operations) > 50 {
 		return SyncResponse{}, ErrInvalid
 	}

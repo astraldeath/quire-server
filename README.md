@@ -1,8 +1,34 @@
 # Quire Server
 
-The optional self-hosted service for Quire. The service provides private accounts, revocable device sessions, and durable reading-data sync over a versioned HTTP API. Progress and notes can sync using the EPUB SHA-256 identity without uploading the book.
+Quire Server includes the Quire browser reader and an administration panel. Users have private progress, notes and highlights, with personal uploads and optional shared libraries.
 
-The reader connects through Settings > Server. EPUB uploads/downloads and owner-configured read-only watched folders are supported. No public server repository or hosted service is required.
+## Browser setup
+
+Build the reader alongside this repository:
+
+```sh
+cd ../quire-reader
+npm ci
+npm run build:web
+cd ../quire-server
+go build -o bin/quire-server ./cmd/quire-server
+bin/quire-server serve -web-dir ../quire-reader/dist-web
+```
+
+Open `http://localhost:8080`. On a new installation the server prints a one-time setup code to its console. Enter that code and choose the initial administrator username and password. The code changes when the server restarts; setup closes permanently once an admin exists. For an existing installation, run `bin/quire-server admin-promote -username NAME` locally to explicitly promote an existing account instead. Existing accounts, books and reading data are preserved.
+
+The browser uses the same reader code as the installed apps. Hosted builds have same-server sign-in and account-specific IndexedDB caches. Browser sessions stay in memory and require sign-in after refreshing or closing the tab. EPUB imports upload to the user's personal library. Covers and metadata arrive automatically; EPUB bytes download on opening. Revoking server access does not remotely erase cached files.
+
+## Administration
+
+- **Overview:** account count, active book copies and active EPUB storage (not total disk usage or orphaned snapshots).
+- **Accounts:** roles, disable/enable and revoke devices. The last active admin is protected. Password recovery remains available through the local `password-reset` command. Users can change their own passwords in the account menu; this signs out all sessions.
+- **Invitations:** single-use codes/links, seven-day expiry, revoke unused invitations, and preassign shared libraries. New accounts are always members. Invite secrets are hashed in storage and shown only when issued.
+- **Libraries:** shared collections, membership, EPUB uploads, common metadata editing and uploaded-copy removal. Shared library storage is separate from personal accounts. Administration has no endpoint for reading members' annotations or positions.
+- **Watched folders:** register server paths against a personal or shared library; scan on demand, review last scan errors, remove watches without modifying source files.
+- **Settings:** server name and scan interval, including manual-only scans.
+
+Data is migrated on opening. Back up the full data directory with the service stopped before upgrading. Keep it out of the public web directory. The `-web-dir` / `QUIRE_WEB_DIR` directory must contain only the trusted reader build; API responses and UI documents have separate content-security policies. Hosted chapter loading uses sanitized srcdoc documents; native rendering is unchanged.
 
 ## Run locally
 
@@ -17,7 +43,7 @@ bin/quire-server serve
 
 The account command prompts for a password twice without echoing it. Use at least 12 characters. Accounts use lowercase names, not email addresses. The future reader will split `alice@your-server` into the username and server address.
 
-Defaults: `http://localhost:8080`, SQLite at `./data/quire.db`. `GET /healthz` checks database readiness; `GET /.well-known/quire` exposes the server name, API URL and supported capabilities. No accounts are created automatically.
+Defaults: `http://localhost:8080`, SQLite at `./data/quire.db`. `GET /healthz` checks database readiness; `GET /.well-known/quire` exposes the server name, API URL and supported capabilities. The first administrator is created through browser setup.
 
 All commands accept `-data PATH`. Serving also accepts `-listen HOST:PORT`, `-public-url https://books.example.com`, and `-name NAME`. Equivalent environment variables: `QUIRE_DATA`, `QUIRE_LISTEN`, `QUIRE_PUBLIC_URL`, `QUIRE_NAME`. Only loopback public URLs may use HTTP. Remote use requires a TLS reverse proxy; the advertised origin must not have a subpath.
 
@@ -36,8 +62,11 @@ For automation, account commands accept `-password-file PATH`. Protect this file
 
 ```sh
 docker compose up -d --build
-docker compose exec quire /quire-server user-add -username alice
+docker compose logs quire
+# Open the server URL and enter the setup code from the logs.
 ```
+
+The Docker build includes reader commit `c1f6c33371dfb35622c786b258b84e64cdc3acc4`. `QUIRE_READER_REF` is the build argument for selecting another reviewed revision.
 
 The container runs as an unprivileged user, with a read-only root filesystem and a named data volume. Compose binds the HTTP port to the host loopback interface. Put your HTTPS reverse proxy in front of it and set `QUIRE_PUBLIC_URL` to the external origin before starting. Do not expose the unencrypted container port directly to the internet. Configure per-client login rate limits at the proxy as well; Quire ignores forwarded client-IP headers and throttles its immediate peer.
 
@@ -115,7 +144,7 @@ bin/quire-server watch-list
 bin/quire-server watch-remove -id WATCH_ID
 ```
 
-Serving scans registered folders at startup and every five minutes. Change this with `-scan-interval 10m`; `0` disables background scans. Scans create private snapshots and seed new book metadata from filenames. Existing manual metadata and deletion records are preserved. A successful scan reconciles removed source files while retaining reading data. Missing roots, changed root filesystem identity, read errors, or files changing during the scan leave the prior availability list intact. Symlinks are not followed. To change a mounted folder's identity, remove the old watch and register the intended folder again. Removing a watch keeps original files and reading metadata.
+Serving scans registered folders at startup and every five minutes. Change this with `-scan-interval 10m`; `0` disables background scans. Scans create private snapshots and seed metadata from the EPUB. Existing manual metadata and deletion records are preserved. A successful scan reconciles removed source files while retaining reading data. Missing roots, changed root filesystem identity, read errors, or files changing during the scan leave the prior availability list intact. Symlinks are not followed. To change a mounted folder's identity, remove the old watch and register the intended folder again. Removing a watch keeps original files and reading metadata.
 
 For Docker, add a read-only bind mount such as `/your/library:/library:ro`, then run `docker compose exec quire /quire-server watch-add -username alice -path /library`. Keep the `/data` named volume writable. Folder paths and account creation are owner commands; clients cannot select arbitrary server filesystem paths.
 

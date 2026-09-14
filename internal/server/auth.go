@@ -45,7 +45,7 @@ func (s *Store) CreateUser(username, password string) error {
 	}
 	defer tx.Rollback()
 	id := randomID()
-	if _, err = tx.Exec("INSERT INTO users VALUES (?,?,?,?)", id, username, salt, key); err != nil {
+	if _, err = tx.Exec("INSERT INTO users (id,username,salt,password_hash) VALUES (?,?,?,?)", id, username, salt, key); err != nil {
 		return err
 	}
 	if _, err = tx.Exec("INSERT INTO cursors VALUES (?,0)", id); err != nil {
@@ -104,7 +104,7 @@ func (s *Store) Login(username, password, device string) (LoginResult, error) {
 	defer tx.Rollback()
 	var user string
 	var salt, key []byte
-	err = tx.QueryRow("SELECT id,salt,password_hash FROM users WHERE username=?", username).Scan(&user, &salt, &key)
+	err = tx.QueryRow("SELECT id,salt,password_hash FROM users WHERE username=? AND disabled=0", username).Scan(&user, &salt, &key)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return LoginResult{}, err
 	}
@@ -145,7 +145,7 @@ func (s *Store) authenticate(token string) (string, error) {
 	}
 	hash := sha256.Sum256([]byte(token))
 	var user string
-	err := s.db.QueryRow("SELECT user_id FROM sessions WHERE token_hash=? AND expires_at>?", hash[:], time.Now().Unix()).Scan(&user)
+	err := s.db.QueryRow("SELECT user_id FROM sessions JOIN users ON users.id=sessions.user_id WHERE token_hash=? AND expires_at>? AND users.disabled=0", hash[:], time.Now().Unix()).Scan(&user)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", ErrUnauthorized
 	}

@@ -39,7 +39,7 @@ func Open(path string) (*Store, error) {
 	if err = db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return fail(err)
 	}
-	if version > 2 {
+	if version > 5 {
 		return fail(errors.New("database was created by a newer server"))
 	}
 	if version == 0 {
@@ -66,6 +66,32 @@ PRAGMA user_version=1;`)
 	}
 	if version < 2 {
 		_, err = db.Exec(`BEGIN; CREATE TABLE watch_roots (id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),root TEXT NOT NULL,identity TEXT NOT NULL,UNIQUE(user_id,root)); CREATE TABLE files (user_id TEXT NOT NULL REFERENCES users(id),book_id TEXT NOT NULL,kind TEXT NOT NULL,source TEXT NOT NULL,size INTEGER NOT NULL,PRIMARY KEY(user_id,book_id,kind,source)); PRAGMA user_version=2; COMMIT;`)
+		if err != nil {
+			return fail(err)
+		}
+	}
+	if version < 3 {
+		_, err = db.Exec(`BEGIN;
+ ALTER TABLE users ADD COLUMN admin INTEGER NOT NULL DEFAULT 0;
+ ALTER TABLE users ADD COLUMN disabled INTEGER NOT NULL DEFAULT 0;
+ CREATE TABLE invites (id TEXT PRIMARY KEY, code_hash BLOB UNIQUE NOT NULL, expires_at INTEGER NOT NULL, redeemed_by TEXT REFERENCES users(id), revoked INTEGER NOT NULL DEFAULT 0);
+ PRAGMA user_version=3; COMMIT;`)
+		if err != nil {
+			return fail(err)
+		}
+	}
+	if version < 4 {
+		_, err = db.Exec(`BEGIN;
+ CREATE TABLE libraries(id TEXT PRIMARY KEY,name TEXT NOT NULL,owner TEXT NOT NULL UNIQUE REFERENCES users(id));
+ CREATE TABLE library_members(library_id TEXT NOT NULL REFERENCES libraries(id),user_id TEXT NOT NULL REFERENCES users(id),PRIMARY KEY(library_id,user_id));
+ CREATE TABLE invite_libraries(invite_id TEXT NOT NULL REFERENCES invites(id),library_id TEXT NOT NULL REFERENCES libraries(id),PRIMARY KEY(invite_id,library_id));
+ PRAGMA user_version=4;COMMIT;`)
+		if err != nil {
+			return fail(err)
+		}
+	}
+	if version < 5 {
+		_, err = db.Exec(`BEGIN;CREATE TABLE server_settings(id INTEGER PRIMARY KEY CHECK(id=1),name TEXT NOT NULL,scan_seconds INTEGER NOT NULL);CREATE TABLE scan_status(watch_id TEXT PRIMARY KEY,last_at INTEGER NOT NULL,error TEXT NOT NULL);PRAGMA user_version=5;COMMIT;`)
 		if err != nil {
 			return fail(err)
 		}

@@ -3,6 +3,8 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -87,7 +89,7 @@ func run(args []string) error {
 		command = args[0]
 		args = args[1:]
 	}
-	if command != "serve" && command != "user-add" && command != "password-reset" && command != "watch-add" && command != "scan" && command != "watch-list" && command != "watch-remove" {
+	if command != "admin-promote" && command != "serve" && command != "user-add" && command != "password-reset" && command != "watch-add" && command != "scan" && command != "watch-list" && command != "watch-remove" {
 		return errors.New("usage: quire-server [serve|user-add|password-reset|watch-add|watch-list|watch-remove|scan] [flags]")
 	}
 	flags := flag.NewFlagSet(command, flag.ContinueOnError)
@@ -130,6 +132,21 @@ func run(args []string) error {
 		fmt.Println("Watched folder added:", id)
 		return store.ScanWatch(id)
 	}
+	if command == "admin-promote" {
+		username := flags.String("username", "", "existing account to promote")
+		if err := flags.Parse(args); err != nil {
+			return err
+		}
+		if *username == "" || flags.NArg() != 0 {
+			return errors.New("-username is required")
+		}
+		store, err := server.Open(filepath.Join(*data, "quire.db"))
+		if err != nil {
+			return err
+		}
+		defer store.Close()
+		return store.Promote(*username)
+	}
 	if command != "serve" {
 		username := flags.String("username", "", "account name (lowercase letters, digits, dot, dash, underscore)")
 		passwordFile := flags.String("password-file", "", "read password from a protected file instead of prompting")
@@ -161,6 +178,7 @@ func run(args []string) error {
 		}
 		return err
 	}
+	webDir := flags.String("web-dir", env("QUIRE_WEB_DIR", "./web"), "built Quire reader directory")
 	listen := flags.String("listen", env("QUIRE_LISTEN", "127.0.0.1:8080"), "HTTP listen address; use a TLS reverse proxy for remote access")
 	publicURL := flags.String("public-url", env("QUIRE_PUBLIC_URL", "http://localhost:8080"), "public HTTPS origin used for discovery")
 	name := flags.String("name", env("QUIRE_NAME", "Quire"), "server display name")
@@ -180,23 +198,47 @@ func run(args []string) error {
 		return err
 	}
 	defer store.Close()
-	srv := &http.Server{Addr: *listen, Handler: server.WithCORS(server.NewHandler(store, *publicURL, *name), strings.Split(*origins, ",")), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 5 * time.Minute, WriteTimeout: 5 * time.Minute, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 << 10}
+	needed, err := store.NeedsSetup()
+	if err != nil {
+		return err
+	}
+	setupCode := ""
+	if needed {
+		var bytes [24]byte
+		if _, err = rand.Read(bytes[:]); err != nil {
+			return err
+		}
+		setupCode = hex.EncodeToString(bytes[:])
+		log.Printf("First-run setup code: %s", setupCode)
+	}
+	srv := &http.Server{Addr: *listen, Handler: server.WithCORS(server.WebUI(server.NewConfiguredHandler(store, *publicURL, *name, setupCode), *webDir), append(strings.Split(*origins, ","), strings.TrimRight(*publicURL, "/"))), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 5 * time.Minute, WriteTimeout: 5 * time.Minute, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 << 10}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	if *scanInterval > 0 {
-		go func() {
-			for {
-				if err := store.ScanAll(); err != nil {
-					log.Printf("Watched folder scan failed; previous availability retained: %v", err)
+	go func() {
+		next := time.Now()
+		previousDelay := store.ScanDelay(*scanInterval)
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				delay := store.ScanDelay(*scanInterval)
+				if delay != previousDelay {
+					next = time.Now()
+					previousDelay = delay
 				}
-				select {
-				case <-ctx.Done():
-					return
-				case <-time.After(*scanInterval):
+				if delay > 0 && !time.Now().Before(next) {
+					if err := store.ScanAll(); err != nil {
+						log.Printf("Watched folder scan failed: %v", err)
+					}
+					next = time.Now().Add(delay)
 				}
 			}
-		}()
-	}
+		}
+	}()
+
 	done := make(chan error, 1)
 	go func() { log.Printf("Quire listening on %s", *listen); done <- srv.ListenAndServe() }()
 	select {

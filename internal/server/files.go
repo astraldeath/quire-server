@@ -113,7 +113,7 @@ func (s *Store) stage(user string, r io.Reader, expected string) (string, int64,
 	return id, n, nil
 }
 func (s *Store) fileList(user string) ([]FileInfo, error) {
-	rows, err := s.db.Query("SELECT book_id,max(size),max(kind='upload'),max(kind='watch') FROM files WHERE user_id=? GROUP BY book_id ORDER BY book_id", user)
+	rows, err := s.db.Query("SELECT book_id,max(size),max(kind='upload' AND user_id=?),max(kind='watch' OR user_id<>?) FROM files WHERE user_id=? OR user_id IN (SELECT l.owner FROM libraries l JOIN library_members m ON m.library_id=l.id WHERE m.user_id=?) GROUP BY book_id ORDER BY book_id", user, user, user, user)
 	if err != nil {
 		return nil, err
 	}
@@ -160,16 +160,16 @@ func (a *api) fileRoutes(mux *http.ServeMux) {
 			failure(w, ErrInvalid)
 			return
 		}
-		var found int
-		if err := a.store.db.QueryRow("SELECT 1 FROM files WHERE user_id=? AND book_id=? LIMIT 1", user, id).Scan(&found); err != nil {
+		owner, err := a.store.accessibleOwner(user, id)
+		if err != nil {
 			failure(w, err)
 			return
 		}
-		if _, err := os.Stat(a.store.objectPath(user, id)); err != nil {
+		if _, err := os.Stat(a.store.objectPath(owner, id)); err != nil {
 			failure(w, sql.ErrNoRows)
 			return
 		}
-		respond(w, 200, epubMetadata(a.store.objectPath(user, id)))
+		respond(w, 200, epubMetadata(a.store.objectPath(owner, id)))
 	})
 	mux.HandleFunc("GET /v1/files", func(w http.ResponseWriter, r *http.Request) {
 		user := a.authorized(w, r)
@@ -215,12 +215,12 @@ func (a *api) fileRoutes(mux *http.ServeMux) {
 			failure(w, ErrInvalid)
 			return
 		}
-		var found int
-		if err := a.store.db.QueryRow("SELECT 1 FROM files WHERE user_id=? AND book_id=? LIMIT 1", user, id).Scan(&found); err != nil {
+		owner, err := a.store.accessibleOwner(user, id)
+		if err != nil {
 			failure(w, err)
 			return
 		}
-		f, err := os.Open(a.store.objectPath(user, id))
+		f, err := os.Open(a.store.objectPath(owner, id))
 		if err != nil {
 			failure(w, sql.ErrNoRows)
 			return
@@ -289,7 +289,15 @@ func inside(root, path string) bool {
 	relative, err := filepath.Rel(root, path)
 	return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)) && !filepath.IsAbs(relative)
 }
-func (s *Store) ScanWatch(id string) error {
+func (s *Store) ScanWatch(id string) (scanErr error) {
+	defer func() {
+		message := ""
+		if scanErr != nil {
+			message = scanErr.Error()
+		}
+		_, _ = s.db.Exec("INSERT INTO scan_status VALUES (?,?,?) ON CONFLICT(watch_id) DO UPDATE SET last_at=excluded.last_at,error=excluded.error", id, time.Now().Unix(), message)
+	}()
+
 	s.fileMu.Lock()
 	defer s.fileMu.Unlock()
 	var user, root, identity string
