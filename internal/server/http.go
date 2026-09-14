@@ -117,6 +117,7 @@ func NewConfiguredHandler(store *Store, publicURL, name, setupCode string) http.
 	a := &api{setupCode: setupCode, store: store, attempts: map[string]loginWindow{}, slots: make(chan struct{}, 2)}
 	mux := http.NewServeMux()
 	a.fileRoutes(mux)
+	a.backupRoutes(mux)
 	a.adminRoutes(mux)
 	a.libraryRoutes(mux)
 	a.settingsRoutes(mux, name)

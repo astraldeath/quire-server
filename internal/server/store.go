@@ -11,9 +11,10 @@ import (
 )
 
 type Store struct {
-	db     *sql.DB
-	data   string
-	fileMu sync.Mutex
+	db       *sql.DB
+	data     string
+	fileMu   sync.Mutex
+	backupMu sync.Mutex
 }
 
 func Open(path string) (*Store, error) {

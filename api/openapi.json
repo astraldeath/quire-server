@@ -1664,6 +1664,33 @@
           }
         }
       }
+    },
+    "/v1/admin/backup": {
+      "post": {
+        "summary": "Download a complete server backup (administrator only)",
+        "responses": {
+          "200": {
+            "description": "ZIP archive with SQLite snapshot and referenced EPUBs",
+            "content": {
+              "application/zip": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Administrator required"
+          },
+          "500": {
+            "description": "Backup failed; no partial archive returned"
+          }
+        }
+      }
     }
   },
   "components": {

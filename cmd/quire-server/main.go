@@ -89,11 +89,49 @@ func run(args []string) error {
 		command = args[0]
 		args = args[1:]
 	}
-	if command != "admin-promote" && command != "serve" && command != "user-add" && command != "password-reset" && command != "watch-add" && command != "scan" && command != "watch-list" && command != "watch-remove" {
-		return errors.New("usage: quire-server [serve|user-add|password-reset|watch-add|watch-list|watch-remove|scan] [flags]")
+	if command != "backup" && command != "restore" && command != "admin-promote" && command != "serve" && command != "user-add" && command != "password-reset" && command != "watch-add" && command != "scan" && command != "watch-list" && command != "watch-remove" {
+		return errors.New("usage: quire-server [serve|backup|restore|user-add|password-reset|watch-add|watch-list|watch-remove|scan] [flags]")
 	}
 	flags := flag.NewFlagSet(command, flag.ContinueOnError)
 	data := flags.String("data", env("QUIRE_DATA", "./data"), "persistent data directory")
+
+	if command == "backup" || command == "restore" {
+		output := flags.String("output", "", "new backup archive filename")
+		input := flags.String("input", "", "server backup archive to restore")
+		if err := flags.Parse(args); err != nil {
+			return err
+		}
+		if flags.NArg() != 0 {
+			return errors.New("unexpected arguments")
+		}
+		if command == "restore" {
+			if *input == "" {
+				return errors.New("-input is required; -data must name a new directory")
+			}
+			if err := server.RestoreBackup(*input, *data); err != nil {
+				return err
+			}
+			fmt.Println("Restored to", *data, ". Sessions revoked; automatic scans paused. Check watched folders before enabling scans.")
+			return nil
+		}
+		if *output == "" {
+			return errors.New("-output is required")
+		}
+		database := filepath.Join(*data, "quire.db")
+		if _, err := os.Stat(database); err != nil {
+			return err
+		}
+		store, err := server.Open(database)
+		if err != nil {
+			return err
+		}
+		defer store.Close()
+		if err = store.Backup(context.Background(), *output); err != nil {
+			return err
+		}
+		fmt.Println("Backup saved to", *output)
+		return nil
+	}
 	if command == "watch-add" || command == "scan" || command == "watch-list" || command == "watch-remove" {
 		username := flags.String("username", "", "owner of the watched library")
 		root := flags.String("path", "", "read-only EPUB folder")
