@@ -58,7 +58,7 @@ func (s *Store) Backup(ctx context.Context, destination string) (err error) {
 		return err
 	}
 	defer db.Close()
-	if _, err = db.ExecContext(ctx, "DELETE FROM sessions; PRAGMA journal_mode=DELETE;"); err != nil {
+	if _, err = db.ExecContext(ctx, "PRAGMA secure_delete=ON; DELETE FROM sessions; DELETE FROM tracking_accounts; UPDATE tracking_links SET auto=0; PRAGMA journal_mode=DELETE;"); err != nil {
 		return err
 	}
 	rows, err := db.QueryContext(ctx, "SELECT DISTINCT user_id,book_id FROM files ORDER BY user_id,book_id")
@@ -287,7 +287,7 @@ func prepareRestoredDatabase(path string, files map[string]backupEntry) error {
 	if err = db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
-	if version != 6 {
+	if version != 6 && version != 7 {
 		return errors.New("backup database version is not supported")
 	}
 	var check string
@@ -318,6 +318,11 @@ func prepareRestoredDatabase(path string, files map[string]backupEntry) error {
 	}
 	if count+1 != len(files) {
 		return errors.New("unreferenced files in backup")
+	}
+	if version == 7 {
+		if _, err = db.Exec("DELETE FROM tracking_accounts; UPDATE tracking_links SET auto=0"); err != nil {
+			return err
+		}
 	}
 	_, err = db.Exec("DELETE FROM sessions; INSERT INTO server_settings(id,name,scan_seconds) VALUES (1,'Quire',0) ON CONFLICT(id) DO UPDATE SET scan_seconds=0; PRAGMA journal_mode=DELETE;")
 	return err

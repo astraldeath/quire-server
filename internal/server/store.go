@@ -11,10 +11,11 @@ import (
 )
 
 type Store struct {
-	db       *sql.DB
-	data     string
-	fileMu   sync.Mutex
-	backupMu sync.Mutex
+	db         *sql.DB
+	data       string
+	fileMu     sync.Mutex
+	backupMu   sync.Mutex
+	trackingMu sync.Mutex
 }
 
 func Open(path string) (*Store, error) {
@@ -40,7 +41,7 @@ func Open(path string) (*Store, error) {
 	if err = db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return fail(err)
 	}
-	if version > 6 {
+	if version > 7 {
 		return fail(errors.New("database was created by a newer server"))
 	}
 	if version == 0 {
@@ -99,6 +100,15 @@ PRAGMA user_version=1;`)
 	}
 	if version < 6 {
 		_, err = db.Exec(`BEGIN;ALTER TABLE scan_status ADD COLUMN imported INTEGER NOT NULL DEFAULT 0;ALTER TABLE scan_status ADD COLUMN existing INTEGER NOT NULL DEFAULT 0;ALTER TABLE scan_status ADD COLUMN skipped INTEGER NOT NULL DEFAULT 0;PRAGMA user_version=6;COMMIT;`)
+		if err != nil {
+			return fail(err)
+		}
+	}
+	if version < 7 {
+		_, err = db.Exec(`BEGIN;
+CREATE TABLE tracking_accounts(user_id TEXT PRIMARY KEY REFERENCES users(id),provider_id TEXT NOT NULL,name TEXT NOT NULL,secret BLOB NOT NULL);
+CREATE TABLE tracking_links(user_id TEXT NOT NULL REFERENCES users(id),book_id TEXT NOT NULL,series_key TEXT NOT NULL,series_id INTEGER NOT NULL,title TEXT NOT NULL,volume REAL NOT NULL,auto INTEGER NOT NULL,complete_entry INTEGER NOT NULL,last_step INTEGER NOT NULL DEFAULT 0,last_sync INTEGER NOT NULL DEFAULT 0,error TEXT NOT NULL DEFAULT '',next_attempt INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(user_id,book_id));
+PRAGMA user_version=7;COMMIT;`)
 		if err != nil {
 			return fail(err)
 		}
