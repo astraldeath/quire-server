@@ -13,6 +13,8 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
+      - name: Trust the checkout in the build container
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - run: go test ./...
       - run: go vet ./...
       - run: go build ./cmd/quire-server
