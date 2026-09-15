@@ -1,5 +1,7 @@
 # Quire Server
 
+**Quire** is pronounced **“kwire”** (/kwaɪər/), rhyming with **choir**.
+
 Quire Server includes the Quire browser reader and an administration panel. Users have private progress, notes and highlights, with personal uploads and optional shared libraries.
 
 ## Browser setup
@@ -25,93 +27,30 @@ The browser uses the same reader code as the installed apps. Hosted builds have 
 - **Accounts:** roles, disable/enable and revoke devices. The last active admin is protected. Password recovery remains available through the local `password-reset` command. Users can change their own passwords in the account menu; this signs out all sessions.
 - **Invitations:** single-use codes/links, seven-day expiry, revoke unused invitations, and preassign shared libraries. New accounts are always members. Invite secrets are hashed in storage and shown only when issued.
 - **Libraries:** shared collections, membership, EPUB uploads, common metadata editing and uploaded-copy removal. Shared library storage is separate from personal accounts. Administration has no endpoint for reading members' annotations or positions.
-- **Watched folders:** register server paths against a personal or shared library; scan on demand, review last scan errors, remove watches without modifying source files.
+- **Watched folders:** register server paths against a personal or shared library; scan automatically when added or on demand, review last scan errors, remove watches without modifying source files.
 - **Settings:** server name and scan interval, including manual-only scans.
 
 Data is migrated on opening. Back up the full data directory with the service stopped before upgrading. Keep it out of the public web directory. The `-web-dir` / `QUIRE_WEB_DIR` directory must contain only the trusted reader build; API responses and UI documents have separate content-security policies. Hosted chapter loading uses sanitized srcdoc documents; native rendering is unchanged.
 
-## Run locally
+## Deployment and reference
 
-Requires Go 1.27.1 or newer. From this folder:
-
-```sh
-go build -o bin/quire-server ./cmd/quire-server
-# On Windows use bin/quire-server.exe for the executable below.
-bin/quire-server user-add -username alice
-bin/quire-server serve
-```
-
-The account command prompts for a password twice without echoing it. Use at least 12 characters. Accounts use lowercase names, not email addresses. The future reader will split `alice@your-server` into the username and server address.
-
-Defaults: `http://localhost:8080`, SQLite at `./data/quire.db`. `GET /healthz` checks database readiness; `GET /.well-known/quire` exposes the server name, API URL and supported capabilities. The first administrator is created through browser setup.
-
-All commands accept `-data PATH`. Serving also accepts `-listen HOST:PORT`, `-public-url https://books.example.com`, and `-name NAME`. Equivalent environment variables: `QUIRE_DATA`, `QUIRE_LISTEN`, `QUIRE_PUBLIC_URL`, `QUIRE_NAME`. Only loopback public URLs may use HTTP. Remote use requires a TLS reverse proxy; the advertised origin must not have a subpath.
-
-## Owner administration
-
-```sh
-bin/quire-server user-add -username bob
-bin/quire-server password-reset -username alice
-```
-
-Password reset revokes **all** sessions for that account. Individual devices can revoke sessions through the authenticated API. Sessions expire after 30 days and are limited to 32 active sessions per account; sign in again after expiry. There is no self-registration or email password-reset endpoint.
-
-For automation, account commands accept `-password-file PATH`. Protect this file and remove it when finished. Passwords are never command-line values, environment variables, or logged. The database stores salted Argon2id hashes; bearer tokens are stored only as SHA-256 hashes.
-
-## Docker
+Requires Go 1.27.1 or newer for a source build. Docker Compose builds the reader and server together:
 
 ```sh
 docker compose up -d --build
 docker compose logs quire
-# Open the server URL and enter the setup code from the logs.
 ```
 
-The Docker build includes reader commit `9da0fdd98e7a4764ede6c3abf33247bcc65c1e42`. `QUIRE_READER_REF` is the build argument for selecting another reviewed revision.
+The image pins reader commit `b35882bcf8ae2d7a7bb0e7b5531e9c2d5933e7ce`. Use `QUIRE_READER_REF` to build another reviewed revision.
 
-The container runs as an unprivileged user, with a read-only root filesystem and a named data volume. Compose binds the HTTP port to the host loopback interface. Put your HTTPS reverse proxy in front of it and set `QUIRE_PUBLIC_URL` to the external origin before starting. Do not expose the unencrypted container port directly to the internet. Configure per-client login rate limits at the proxy as well; Quire ignores forwarded client-IP headers and throttles its immediate peer.
+- [Production deployment and upgrades](docs/PRODUCTION.md)
+- [Server commands, Docker, reader connections, and watched folders](docs/OPERATIONS.md)
+- [Backup and restore](docs/BACKUPS.md)
+- [MangaBaka OAuth and tracking](docs/tracking.md)
+- [API and synchronization semantics](docs/API.md)
+- [OpenAPI contract](api/openapi.json)
 
-Docker includes CA certificates for outbound HTTPS. Compose provides a bounded temporary filesystem for backup staging while keeping the image read-only.
-
-## API and sync semantics
-
-The reusable contract is [api/openapi.json](api/openapi.json), licensed separately under MIT. Server implementation is AGPL-3.0-only; see [LICENSE](LICENSE). Contract code can be generated for the MIT reader without copying server implementation.
-
-- `POST /v1/sessions`: username, password, deviceName; returns a bearer token once.
-- `GET /v1/sessions`, `DELETE /v1/sessions/{id}`: list/revoke your devices.
-- `POST /v1/sync`: submit up to 50 operations and read up to 100 changes.
-
-Each operation contains a stable `id`, SHA-256 `bookId`, `kind` (`book`, `position`, `annotation`), `recordId`, `baseRevision`, `deleted`, and a typed `value`. Book and position record IDs are `default`; annotation IDs remain stable across devices. Device timestamps, file bytes and cover data are excluded from these records. API strings are plain data, never trusted HTML.
-
-Example request after authentication:
-
-```json
-{
-  "cursor": 0,
-  "operations": [{
-    "id": "device-a-operation-1",
-    "bookId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-    "kind": "position",
-    "recordId": "default",
-    "baseRevision": 0,
-    "deleted": false,
-    "value": {"cfi": "epubcfi(/6/2)", "fraction": 0.1, "section": "Chapter 1"}
-  }]
-}
-```
-
-The account comes from the bearer session, never from a supplied user ID. Identical retries return the original operation result without duplicating changes. Reusing an operation ID for different content, a future revision/cursor, or exceeding 16 unresolved candidates returns 409 and rolls back the batch. Malformed data also rolls back the batch.
-
-Each record has a server revision and one or more candidates. Stale edits append candidates, preserving concurrent notes and reading positions. A write based on the latest revision explicitly resolves all candidates. Deletions are retained as tombstone candidates; stale writes cannot erase them. The client must display conflicts and allow a choice rather than silently selecting the furthest reading position.
-
-Pull with `operations: []` and the last stored `cursor`. Apply returned changes and advance the cursor atomically on the client. Repeat while `hasMore` is true. A change cursor is independent of a record revision. Persist local changes and outbox operations in one client transaction; remove acknowledged operations only after handling the server response. The reader implements this durable outbox, foreground/reconnect sync, and explicit conflict choices.
-
-Request bodies are limited to 2 MiB, individual values to 32 KiB. Histories and tombstones have no expiry in v1, allowing old devices to reconnect safely; monitor data-volume growth. File transfer uses separate endpoints and never deletes reading data.
-
-## Persistence and backups
-
-SQLite uses WAL, full synchronous writes, transactions and a schema version. Keep the complete persistent data directory private. To back up this initial server, stop it, copy the entire data directory (or Docker volume), then restart it. Restore with the service stopped. A raw server backup contains password hashes and hashed sessions and needs protection. Reader `.quire-backup` files are a separate format and are not imported by this service.
-
-## Verify
+## Development
 
 ```sh
 go test ./...
@@ -119,64 +58,6 @@ go vet ./...
 go build ./cmd/quire-server
 ```
 
-Tests use isolated temporary SQLite databases. They cover authentication, expiry/revocation/reset, account isolation, persistent notes, atomic rollback, retry IDs, concurrent-edit candidates, tombstones, cursor paging, malformed input and login throttling. No real books or credentials are included.
+Format Go changes with `gofmt`. Tests use isolated temporary databases. Use incremental Conventional Commits; never commit runtime data, books, credentials, or generated binaries.
 
-
-## Reader connection and file transfer
-
-In the installed reader, open **Settings > Server**, enter `alice@books.example.com`, find the server, confirm its displayed address, and sign in. Use Advanced server address for custom ports. Native Windows/iOS sessions use OS credential storage. Standalone browser sessions stay in memory; the hosted WebUI uses 30-day HttpOnly, SameSite=Strict cookies (Secure on HTTPS) to preserve sign-in across refreshes and browser restarts; explicitly configure `-allowed-origins http://localhost:1420` (or `QUIRE_ALLOWED_ORIGINS`) to permit a browser client. No wildcard origins are accepted. Native apps do not need CORS configuration.
-
-Books, progress and passages sync automatically; appearance settings stay device-local. EPUB transfer is explicit in **Book details > Server copy**. Removing a server upload leaves reading data and existing device downloads intact. Identical watched and uploaded copies remain independent sources.
-
-- `GET /v1/files`: this account's available file identities and sources.
-- `PUT /v1/books/{sha256}/file`: raw EPUB, maximum 128 MiB, hash verified before registration.
-- `GET /v1/books/{sha256}/file`: owned EPUB download.
-- `DELETE /v1/books/{sha256}/file`: remove uploaded source only; watched-only files return 403.
-
-Interrupted uploads never become available. Downloads are checked against the identity again by the reader. Server snapshots live beneath the private data directory; source folders are never written to. Unreferenced snapshots from failed scans may remain on disk in this initial version; automatic garbage collection is not implemented.
-
-## Read-only watched folders
-
-```sh
-bin/quire-server watch-add -username alice -path /library/alice
-bin/quire-server scan
-bin/quire-server watch-list
-bin/quire-server watch-remove -id WATCH_ID
-```
-
-Serving scans registered folders at startup and every five minutes. Change this with `-scan-interval 10m`; `0` disables background scans. Scans create private snapshots and seed metadata from the EPUB. Existing manual metadata and deletion records are preserved. A successful scan reconciles removed source files while retaining reading data. Missing roots, changed root filesystem identity, read errors, or files changing during the scan leave the prior availability list intact. Symlinks are not followed. To change a mounted folder's identity, remove the old watch and register the intended folder again. Removing a watch keeps original files and reading metadata.
-
-For Docker, add a read-only bind mount such as `/your/library:/library:ro`, then run `docker compose exec quire /quire-server watch-add -username alice -path /library`. Keep the `/data` named volume writable. Folder paths and account creation are owner commands; clients cannot select arbitrary server filesystem paths.
-
-### Library previews
-
-Watched EPUBs publish their embedded title, author, and series metadata during scanning. Existing user edits are preserved. Authenticated `GET /v1/books/{id}/metadata` returns embedded metadata and a small JPEG cover preview (up to 320 x 480 pixels), without transferring the EPUB. Cover extraction accepts bounded raster images only; missing or unsupported covers use the reader fallback. No publisher scripts or external URLs are loaded.
-
-Readers cache previews automatically and fetch the EPUB through the existing authenticated file endpoint when a user opens a book. Downloads are hash-verified and stored for offline reading; notes and user metadata are retained.
-
-Shared libraries can be renamed or deleted from Administration. Deleting a library removes its grants, watch registrations, and managed server files, but preserves watched originals and members' own reading records and downloaded copies. Scan history reports newly imported and existing distinct EPUBs plus skipped non-EPUB files/symlinks; failed scans keep the previous catalog.
-
-## Server backup and restore
-
-Administration → Backups downloads a complete `.quire-server-backup` ZIP archive (browser limit: 512 MB). The snapshot includes accounts/password hashes, libraries/grants/invitations, metadata, private reading records, settings, watch registrations, and every referenced managed EPUB—including cached watched copies. Active sessions, logs, environment files, TLS configuration, and watched originals are excluded. Archives are unencrypted; keep them in protected storage away from the server.
-
-For larger libraries, stop the server before using the CLI, then restart it after the archive completes:
-
-```sh
-quire-server backup -data ./data -output ./server.quire-server-backup
-```
-
-Restore writes only to a **new, nonexistent directory**, validates the manifest and SHA-256 checksums, and never overwrites the active server:
-
-```sh
-quire-server restore -input ./server.quire-server-backup -data ./restored-data
-quire-server serve -data ./restored-data -web-dir ./web
-```
-
-Stop the previous server before starting the restored one on the same port, and retain the previous data directory until verified. Restore revokes all sessions and pauses automatic scans; check source paths and mounts before enabling scans in Administration → Settings. Cached watched books remain readable without their original mount. Deployment flags, environment variables, and TLS/reverse-proxy settings must be supplied separately.
-
-Format 1 supports this server's schema version 6, at most 100,002 ZIP entries, a 1 GiB SQLite snapshot, and 100 GiB unpacked data. Backup uses temporary disk space for the SQLite snapshot and archive. File changes wait while a web backup is created; reading and metadata sync remain available. The command refuses to overwrite an existing archive.
-
-## Production preparation
-
-See [deployment and upgrade checklist](docs/PRODUCTION.md) and [MangaBaka configuration](docs/tracking-prototype.md). Use incremental Conventional Commits for changes.
+The server is licensed under [AGPL-3.0-only](LICENSE). The API contract is separately licensed under MIT, allowing the [MIT reader](https://github.com/astraldeath/quire) to generate client code without copying server implementation.
