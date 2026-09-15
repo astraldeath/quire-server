@@ -17,7 +17,7 @@ bin/quire-server serve -web-dir ../quire-reader/dist-web
 
 Open `http://localhost:8080`. On a new installation the server prints a one-time setup code to its console. Enter that code and choose the initial administrator username and password. The code changes when the server restarts; setup closes permanently once an admin exists. For an existing installation, run `bin/quire-server admin-promote -username NAME` locally to explicitly promote an existing account instead. Existing accounts, books and reading data are preserved.
 
-The browser uses the same reader code as the installed apps. Hosted builds have same-server sign-in and account-specific IndexedDB caches. Browser sessions stay in memory and require sign-in after refreshing or closing the tab. EPUB imports upload to the user's personal library. Covers and metadata arrive automatically; EPUB bytes download on opening. Revoking server access does not remotely erase cached files.
+The browser uses the same reader code as the installed apps. Hosted builds have same-server sign-in and account-specific IndexedDB caches. Hosted browser sessions use 30-day HttpOnly cookies and survive refresh and browser restarts. EPUB imports upload to the user's personal library. Covers and metadata arrive automatically; EPUB bytes download on opening. Revoking server access does not remotely erase cached files.
 
 ## Administration
 
@@ -66,11 +66,11 @@ docker compose logs quire
 # Open the server URL and enter the setup code from the logs.
 ```
 
-The Docker build includes reader commit `c1f6c33371dfb35622c786b258b84e64cdc3acc4`. `QUIRE_READER_REF` is the build argument for selecting another reviewed revision.
+The Docker build includes reader commit `9da0fdd98e7a4764ede6c3abf33247bcc65c1e42`. `QUIRE_READER_REF` is the build argument for selecting another reviewed revision.
 
 The container runs as an unprivileged user, with a read-only root filesystem and a named data volume. Compose binds the HTTP port to the host loopback interface. Put your HTTPS reverse proxy in front of it and set `QUIRE_PUBLIC_URL` to the external origin before starting. Do not expose the unencrypted container port directly to the internet. Configure per-client login rate limits at the proxy as well; Quire ignores forwarded client-IP headers and throttles its immediate peer.
 
-Docker packaging is included; it has not yet been run on this development machine because Docker Desktop’s daemon was unavailable. Native Windows tests and a Linux cross-build are the local verification paths.
+Docker includes CA certificates for outbound HTTPS. Compose provides a bounded temporary filesystem for backup staging while keeping the image read-only.
 
 ## API and sync semantics
 
@@ -176,3 +176,7 @@ quire-server serve -data ./restored-data -web-dir ./web
 Stop the previous server before starting the restored one on the same port, and retain the previous data directory until verified. Restore revokes all sessions and pauses automatic scans; check source paths and mounts before enabling scans in Administration → Settings. Cached watched books remain readable without their original mount. Deployment flags, environment variables, and TLS/reverse-proxy settings must be supplied separately.
 
 Format 1 supports this server's schema version 6, at most 100,002 ZIP entries, a 1 GiB SQLite snapshot, and 100 GiB unpacked data. Backup uses temporary disk space for the SQLite snapshot and archive. File changes wait while a web backup is created; reading and metadata sync remain available. The command refuses to overwrite an existing archive.
+
+## Production preparation
+
+See [deployment and upgrade checklist](docs/PRODUCTION.md) and [MangaBaka configuration](docs/tracking-prototype.md). Use incremental Conventional Commits for changes.

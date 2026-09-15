@@ -1,0 +1,37 @@
+name: Server checks
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    container: golang:1.27.1
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - run: go test ./...
+      - run: go vet ./...
+      - run: go build ./cmd/quire-server
+  container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - run: docker build -t quire-check .
+      - name: Check container startup and backup restore
+        run: |
+          docker run -d --name quire-smoke --read-only --cap-drop ALL --security-opt no-new-privileges:true --tmpfs /tmp:size=128m,mode=1777 --tmpfs /data:uid=65532,gid=65532,mode=0700 -p 127.0.0.1:8080:8080 quire-check
+          trap 'docker rm -f quire-smoke' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://localhost:8080/healthz; then break; fi
+            sleep 1
+          done
+          curl --fail --silent http://localhost:8080/healthz
+          curl --fail --silent http://localhost:8080/settings/backups > /dev/null
+          docker exec quire-smoke /quire-server backup -output /tmp/smoke.quire-server-backup
+          docker exec quire-smoke /quire-server restore -input /tmp/smoke.quire-server-backup -data /tmp/restored

@@ -1,6 +1,6 @@
 FROM node:24-alpine AS reader
-RUN apk add --no-cache git
-ARG QUIRE_READER_REF=28ed899a0ebc16215d63d929b1b1e197cda84353
+RUN apk add --no-cache git ca-certificates
+ARG QUIRE_READER_REF=9da0fdd98e7a4764ede6c3abf33247bcc65c1e42
 RUN git clone https://github.com/astraldeath/quire.git /reader \
     && cd /reader && git checkout --detach "$QUIRE_READER_REF"
 WORKDIR /reader
@@ -16,6 +16,8 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/quire-server ./cmd
     && mkdir -p /out/data && chmod 700 /out/data
 
 FROM scratch
+COPY LICENSE /licenses/quire-server-AGPL-3.0.txt
+COPY --from=reader /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=reader /reader/dist-web /web
 COPY --from=reader /reader/LICENSE /licenses/quire-reader-MIT.txt
 COPY --from=build /out/quire-server /quire-server

@@ -6,3 +6,5 @@
 !internal/
 !internal/**
 **/*_test.go
+
+!LICENSE
