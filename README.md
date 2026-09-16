@@ -41,7 +41,7 @@ docker compose up -d --build
 docker compose logs quire
 ```
 
-The image pins reader commit `b35882bcf8ae2d7a7bb0e7b5531e9c2d5933e7ce`. Use `QUIRE_READER_REF` to build another reviewed revision.
+The image pins reader commit `3297cd3d69ea6a3d86193f003ab88bf0b1119d63`. Use `QUIRE_READER_REF` to build another reviewed revision.
 
 - [Production deployment and upgrades](docs/PRODUCTION.md)
 - [Server commands, Docker, reader connections, and watched folders](docs/OPERATIONS.md)

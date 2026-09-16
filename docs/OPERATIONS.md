@@ -34,7 +34,7 @@ docker compose logs quire
 # Open the server URL and enter the setup code from the logs.
 ```
 
-The Docker build includes reader commit `b35882bcf8ae2d7a7bb0e7b5531e9c2d5933e7ce`. `QUIRE_READER_REF` is the build argument for selecting another reviewed revision.
+The Docker build includes reader commit `3297cd3d69ea6a3d86193f003ab88bf0b1119d63`. `QUIRE_READER_REF` is the build argument for selecting another reviewed revision.
 
 The container runs as an unprivileged user, with a read-only root filesystem and a named data volume. Compose binds the HTTP port to the host loopback interface. Put your HTTPS reverse proxy in front of it and set `QUIRE_PUBLIC_URL` to the external origin before starting. Do not expose the unencrypted container port directly to the internet. Configure per-client login rate limits at the proxy as well; Quire ignores forwarded client-IP headers and throttles its immediate peer.
 
