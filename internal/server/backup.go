@@ -287,7 +287,7 @@ func prepareRestoredDatabase(path string, files map[string]backupEntry) error {
 	if err = db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
-	if version != 6 && version != 7 {
+	if version != 6 && version != 7 && version != 8 {
 		return errors.New("backup database version is not supported")
 	}
 	var check string
@@ -319,7 +319,7 @@ func prepareRestoredDatabase(path string, files map[string]backupEntry) error {
 	if count+1 != len(files) {
 		return errors.New("unreferenced files in backup")
 	}
-	if version == 7 {
+	if version >= 7 {
 		if _, err = db.Exec("DELETE FROM tracking_accounts; UPDATE tracking_links SET auto=0"); err != nil {
 			return err
 		}

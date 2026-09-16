@@ -1885,6 +1885,12 @@
             "minimum": 0,
             "maximum": 1
           },
+          "completedChapter": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100000,
+            "description": "Optional completed chapter number from a validated numbered table of contents."
+          },
           "section": {
             "type": "string",
             "maxLength": 2048

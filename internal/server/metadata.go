@@ -116,6 +116,7 @@ func epubMetadata(filename string) bookMetadata {
 			}
 		}
 	}
+	result = inferMetadataVolume(result, "")
 	for _, item := range pkg.Items {
 		if item.ID != coverID && !strings.Contains(" "+item.Properties+" ", " cover-image ") {
 			continue

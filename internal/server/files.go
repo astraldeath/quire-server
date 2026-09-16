@@ -169,7 +169,7 @@ func (a *api) fileRoutes(mux *http.ServeMux) {
 			failure(w, sql.ErrNoRows)
 			return
 		}
-		respond(w, 200, epubMetadata(a.store.objectPath(owner, id)))
+		respond(w, 200, a.store.objectMetadata(owner, id))
 	})
 	mux.HandleFunc("GET /v1/files", func(w http.ResponseWriter, r *http.Request) {
 		user := a.authorized(w, r)
@@ -379,6 +379,15 @@ func (s *Store) ScanWatch(id string) (scanErr error) {
 	if err != nil || current != identity {
 		return errors.New("watched root changed during scan")
 	}
+	// Snapshot objects are immutable. Parse them before opening the write transaction.
+	metadata := make(map[string]bookMetadata, len(items))
+	for _, item := range items {
+		if _, seen := metadata[item.book]; !seen {
+			meta := s.objectMetadata(user, item.book)
+			meta.Cover = "" // Do not retain every thumbnail for a large scan.
+			metadata[item.book] = meta
+		}
+	}
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
@@ -407,13 +416,15 @@ func (s *Store) ScanWatch(id string) (scanErr error) {
 		if _, err = tx.Exec("INSERT INTO files VALUES (?,?,'watch',?,?)", user, item.book, id+"/"+item.path, item.size); err != nil {
 			return err
 		}
-		if err = seedBook(tx, user, item.book, item.title, epubMetadata(s.objectPath(user, item.book))); err != nil {
+		if err = seedBook(tx, user, item.book, item.title, metadata[item.book]); err != nil {
 			return err
 		}
 	}
 	return tx.Commit()
 }
 func seedBook(tx *sql.Tx, user, book, title string, metadata bookMetadata) error {
+	// Watched sources retain their filename; uploaded object names are hashes.
+	metadata = inferMetadataVolume(metadata, title)
 	revision := int64(1)
 	var raw string
 	err := tx.QueryRow("SELECT revision,candidates FROM records WHERE user_id=? AND book_id=? AND kind='book' AND record_id='default'", user, book).Scan(&revision, &raw)

@@ -40,7 +40,12 @@ is no unattended server scheduler yet.
 Starting a book can change `plan_to_read` or `considering` to `reading`. At >=99.9%
 (displayed as 100%), an explicitly configured volume number can advance external
 volume progress. Completion of the whole external entry is a separate book-only
-option. No chapter counts are inferred from EPUB sections. External progress is
+option. For links without a volume, the reader can send `completedChapter` from
+validated numbered table-of-contents boundaries; arbitrary EPUB sections are not
+counted as chapters. The server stores a separate chapter acknowledgement so new
+chapters continue syncing after the initial reading state. MangaBaka accepts up to
+10000 chapters; larger local values remain saved and show a tracking error without
+sending an invalid update. External progress is
 never lowered; notes, ratings, and other external fields are untouched. New external
 entries are private. Automatic reads do not resume paused or dropped entries.
 
@@ -49,8 +54,8 @@ Normal authenticated users can access `/v1/tracking`, `/v1/tracking/search`,
 Authentication and cookie session binding follow the existing Quire API.
 
 Provider contracts checked against https://mangabaka.org/api.json and
-https://mangabaka.org/.well-known/openid-configuration on 2026-09-14.
+https://mangabaka.org/.well-known/openid-configuration on 2026-09-14; chapter request
+bounds rechecked against the official API schema on 2026-09-15.
 
-Native iOS/desktop tracking controls and chapter mapping are not
-included in this WebUI integration. Real-account writes require the owner's authorization;
-automated tests use a local fake provider.
+Automatic tracking requires the owner's opt-in. Automated tests use a local fake
+provider and do not write to real accounts.

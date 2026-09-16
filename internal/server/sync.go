@@ -105,11 +105,15 @@ func validateOperation(op Operation) error {
 		}
 	case "position":
 		var v struct {
-			CFI      *string  `json:"cfi"`
-			Fraction *float64 `json:"fraction"`
-			Section  string   `json:"section"`
+			CFI              *string  `json:"cfi"`
+			Fraction         *float64 `json:"fraction"`
+			Section          string   `json:"section"`
+			CompletedChapter *int     `json:"completedChapter"`
 		}
 		if strictJSON(op.Value, &v) != nil || v.CFI == nil || len(*v.CFI) > 8192 || v.Fraction == nil || *v.Fraction < 0 || *v.Fraction > 1 || (*v.CFI == "" && *v.Fraction != 1) || len(v.Section) > 2048 {
+			return ErrInvalid
+		}
+		if v.CompletedChapter != nil && (*v.CompletedChapter < 0 || *v.CompletedChapter > 100000) {
 			return ErrInvalid
 		}
 	case "annotation":

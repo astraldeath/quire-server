@@ -43,13 +43,27 @@ func (s *Store) sharedSeeds(user string) error {
 	if err != nil {
 		return err
 	}
+	// Archive parsing and thumbnail generation must not hold the sole DB connection.
+	metadata := make([]bookMetadata, len(items))
+	for n, i := range items {
+		metadata[n] = s.objectMetadata(i.owner, i.id)
+		metadata[n].Cover = "" // Seed records never contain thumbnails.
+	}
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	for _, i := range items {
-		meta := epubMetadata(s.objectPath(i.owner, i.id))
+	for n, i := range items {
+		// Membership or availability may have changed while metadata was decoded.
+		var available bool
+		if err = tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM files f JOIN libraries l ON l.owner=f.user_id JOIN library_members m ON m.library_id=l.id WHERE m.user_id=? AND f.user_id=? AND f.book_id=?)`, user, i.owner, i.id).Scan(&available); err != nil {
+			return err
+		}
+		if !available {
+			continue
+		}
+		meta := metadata[n]
 		var raw string
 		if e := tx.QueryRow("SELECT candidates FROM records WHERE user_id=? AND book_id=? AND kind='book' AND record_id='default'", i.owner, i.id).Scan(&raw); e == nil {
 			var candidates []Candidate
@@ -81,7 +95,7 @@ func (a *api) libraryRoutes(mux *http.ServeMux) {
 		}
 		out := []map[string]any{}
 		for _, f := range files {
-			m := epubMetadata(a.store.objectPath(owner, f.BookID))
+			m := a.store.objectMetadata(owner, f.BookID)
 			var raw string
 			if e := a.store.db.QueryRow("SELECT candidates FROM records WHERE user_id=? AND book_id=? AND kind='book'", owner, f.BookID).Scan(&raw); e == nil {
 				var c []Candidate

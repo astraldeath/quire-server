@@ -16,6 +16,7 @@ type Store struct {
 	fileMu     sync.Mutex
 	backupMu   sync.Mutex
 	trackingMu sync.Mutex
+	metadata   *metadataCache
 }
 
 func Open(path string) (*Store, error) {
@@ -41,7 +42,7 @@ func Open(path string) (*Store, error) {
 	if err = db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return fail(err)
 	}
-	if version > 7 {
+	if version > 8 {
 		return fail(errors.New("database was created by a newer server"))
 	}
 	if version == 0 {
@@ -113,6 +114,12 @@ PRAGMA user_version=7;COMMIT;`)
 			return fail(err)
 		}
 	}
-	return &Store{db: db, data: filepath.Dir(path)}, nil
+	if version < 8 {
+		_, err = db.Exec(`BEGIN; ALTER TABLE tracking_links ADD COLUMN last_chapter INTEGER NOT NULL DEFAULT 0; PRAGMA user_version=8; COMMIT;`)
+		if err != nil {
+			return fail(err)
+		}
+	}
+	return &Store{db: db, data: filepath.Dir(path), metadata: newMetadataCache(128, 16<<20, epubMetadata)}, nil
 }
 func (s *Store) Close() error { return s.db.Close() }

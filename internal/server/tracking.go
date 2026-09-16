@@ -28,13 +28,15 @@ type trackingLink struct {
 	Auto          bool    `json:"auto"`
 	CompleteEntry bool    `json:"completeEntry"`
 	LastStep      int     `json:"lastStep"`
+	LastChapter   int     `json:"lastChapter"`
 	LastSync      int64   `json:"lastSync"`
 	Error         string  `json:"error"`
 	NextAttempt   int64   `json:"-"`
 }
 type trackingRemote struct {
-	State  string  `json:"state"`
-	Volume float64 `json:"progress_volume"`
+	State   string  `json:"state"`
+	Volume  float64 `json:"progress_volume"`
+	Chapter float64 `json:"progress_chapter"`
 }
 
 func trackingPatch(l trackingLink, step int, remote trackingRemote) map[string]any {
@@ -53,7 +55,7 @@ func trackingPatch(l trackingLink, step int, remote trackingRemote) map[string]a
 	return patch
 }
 func (s *Store) trackingLinks(user string) ([]trackingLink, error) {
-	rows, err := s.db.Query("SELECT book_id,series_key,series_id,title,volume,auto,complete_entry,last_step,last_sync,error,next_attempt FROM tracking_links WHERE user_id=? ORDER BY title", user)
+	rows, err := s.db.Query("SELECT book_id,series_key,series_id,title,volume,auto,complete_entry,last_step,last_sync,error,next_attempt,last_chapter FROM tracking_links WHERE user_id=? ORDER BY title", user)
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +63,7 @@ func (s *Store) trackingLinks(user string) ([]trackingLink, error) {
 	out := []trackingLink{}
 	for rows.Next() {
 		var l trackingLink
-		if err = rows.Scan(&l.BookID, &l.SeriesKey, &l.SeriesID, &l.Title, &l.Volume, &l.Auto, &l.CompleteEntry, &l.LastStep, &l.LastSync, &l.Error, &l.NextAttempt); err != nil {
+		if err = rows.Scan(&l.BookID, &l.SeriesKey, &l.SeriesID, &l.Title, &l.Volume, &l.Auto, &l.CompleteEntry, &l.LastStep, &l.LastSync, &l.Error, &l.NextAttempt, &l.LastChapter); err != nil {
 			return nil, err
 		}
 		out = append(out, l)
@@ -227,7 +229,8 @@ func (s *Store) runTracking(ctx context.Context, user string, p *trackingProvide
 			continue
 		}
 		var pos struct {
-			Fraction float64 `json:"fraction"`
+			Fraction         float64 `json:"fraction"`
+			CompletedChapter int     `json:"completedChapter"`
 		}
 		if json.Unmarshal(candidates[0].Value, &pos) != nil {
 			continue
@@ -239,7 +242,19 @@ func (s *Store) runTracking(ctx context.Context, user string, p *trackingProvide
 		if pos.Fraction >= 0.999 {
 			step = 2
 		}
-		if step <= l.LastStep {
+		chapter := 0
+		if l.Volume == 0 && pos.CompletedChapter > 0 && pos.CompletedChapter <= 100000 {
+			chapter = pos.CompletedChapter
+		}
+		if step <= l.LastStep && chapter <= l.LastChapter {
+			continue
+		}
+		// MangaBaka's API bounds progress_chapter at 10000; never clamp and
+		// misreport a larger local chapter, or repeatedly send an invalid request.
+		if chapter > 10000 {
+			if _, err := s.db.Exec("UPDATE tracking_links SET error=?,next_attempt=? WHERE user_id=? AND book_id=?", "MangaBaka supports chapter progress up to 10000. Local progress is saved.", time.Now().Add(time.Minute).Unix(), user, l.BookID); err != nil {
+				return err
+			}
 			continue
 		}
 		if processed >= 1 {
@@ -258,6 +273,9 @@ func (s *Store) runTracking(ctx context.Context, user string, p *trackingProvide
 		}
 		if e == nil {
 			patch := trackingPatch(l, step, remote)
+			if float64(chapter) > remote.Chapter {
+				patch["progress_chapter"] = chapter
+			}
 			if len(patch) > 0 {
 				_, _, e = p.call(ctx, "PUT", path, token, patch)
 			}
@@ -267,7 +285,7 @@ func (s *Store) runTracking(ctx context.Context, user string, p *trackingProvide
 			message = e.Error()
 			_, err = s.db.Exec("UPDATE tracking_links SET error=?,next_attempt=? WHERE user_id=? AND book_id=?", message, time.Now().Add(time.Minute).Unix(), user, l.BookID)
 		} else {
-			_, err = s.db.Exec("UPDATE tracking_links SET last_step=?,last_sync=?,error='',next_attempt=0 WHERE user_id=? AND book_id=?", step, time.Now().Unix(), user, l.BookID)
+			_, err = s.db.Exec("UPDATE tracking_links SET last_step=max(last_step,?),last_chapter=max(last_chapter,?),last_sync=?,error='',next_attempt=0 WHERE user_id=? AND book_id=?", step, chapter, time.Now().Unix(), user, l.BookID)
 		}
 		if err != nil {
 			return err
@@ -376,7 +394,7 @@ func (a *api) trackingRoutes(mux *http.ServeMux) {
 		}
 		defer tx.Rollback()
 		if _, err = tx.Exec("DELETE FROM tracking_accounts WHERE user_id=?", u); err == nil {
-			_, err = tx.Exec("UPDATE tracking_links SET auto=0,last_step=0,last_sync=0,error='',next_attempt=0 WHERE user_id=?", u)
+			_, err = tx.Exec("UPDATE tracking_links SET auto=0,last_step=0,last_chapter=0,last_sync=0,error='',next_attempt=0 WHERE user_id=?", u)
 		}
 		if err == nil {
 			err = tx.Commit()
@@ -421,7 +439,7 @@ func (a *api) trackingRoutes(mux *http.ServeMux) {
 				return
 			}
 		}
-		_, err = a.store.db.Exec(`INSERT INTO tracking_links(user_id,book_id,series_key,series_id,title,volume,auto,complete_entry) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(user_id,book_id) DO UPDATE SET series_key=excluded.series_key,series_id=excluded.series_id,title=excluded.title,volume=excluded.volume,auto=excluded.auto,complete_entry=excluded.complete_entry,last_step=0,last_sync=0,error='',next_attempt=0`, u, id, l.SeriesKey, l.SeriesID, l.Title, l.Volume, l.Auto, l.CompleteEntry)
+		_, err = a.store.db.Exec(`INSERT INTO tracking_links(user_id,book_id,series_key,series_id,title,volume,auto,complete_entry) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(user_id,book_id) DO UPDATE SET series_key=excluded.series_key,series_id=excluded.series_id,title=excluded.title,volume=excluded.volume,auto=excluded.auto,complete_entry=excluded.complete_entry,last_step=0,last_chapter=0,last_sync=0,error='',next_attempt=0`, u, id, l.SeriesKey, l.SeriesID, l.Title, l.Volume, l.Auto, l.CompleteEntry)
 		if err != nil {
 			failure(w, err)
 			return
