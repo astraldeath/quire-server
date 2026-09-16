@@ -34,12 +34,17 @@ Data is migrated on opening. Back up the full data directory with the service st
 
 ## Deployment and reference
 
-Requires Go 1.27.1 or newer for a source build. Docker Compose builds the reader and server together:
+The prebuilt image includes the server and WebUI for AMD64 and ARM64. Set `QUIRE_PUBLIC_URL` to your public HTTPS address, then start it:
 
 ```sh
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 docker compose logs quire
 ```
+
+Updates use the same pull and up commands; your named data volume is retained. `latest` follows successful `main` builds. Version tags and `sha-<full-commit>` tags are also published.
+
+To build locally instead: `docker compose -f compose.yaml -f compose.build.yaml up -d --build`. Source builds require Go 1.27.1 or newer.
 
 The image pins reader commit `3297cd3d69ea6a3d86193f003ab88bf0b1119d63`. Use `QUIRE_READER_REF` to build another reviewed revision.
 

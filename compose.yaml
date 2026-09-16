@@ -1,13 +1,13 @@
 services:
   quire:
-    build: .
+    image: ghcr.io/astraldeath/quire-server:latest
     restart: unless-stopped
     environment:
       QUIRE_PUBLIC_URL: ${QUIRE_PUBLIC_URL:-http://localhost:8080}
       QUIRE_NAME: ${QUIRE_NAME:-Quire}
       QUIRE_ALLOWED_ORIGINS: ${QUIRE_ALLOWED_ORIGINS:-}
     ports:
-      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:${QUIRE_PORT:-8080}:8080"
     volumes:
       - quire-data:/data
     tmpfs:

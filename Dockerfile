@@ -1,4 +1,4 @@
-FROM node:24-alpine AS reader
+FROM --platform=$BUILDPLATFORM node:24-alpine AS reader
 RUN apk add --no-cache git ca-certificates
 ARG QUIRE_READER_REF=3297cd3d69ea6a3d86193f003ab88bf0b1119d63
 RUN git clone https://github.com/astraldeath/quire.git /reader \
@@ -6,13 +6,15 @@ RUN git clone https://github.com/astraldeath/quire.git /reader \
 WORKDIR /reader
 RUN npm ci && npm run build:web
 
-FROM golang:1.27.1 AS build
+FROM --platform=$BUILDPLATFORM golang:1.27.1 AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY cmd ./cmd
 COPY internal ./internal
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/quire-server ./cmd/quire-server \
+ARG TARGETOS
+ARG TARGETARCH
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w" -o /out/quire-server ./cmd/quire-server \
     && mkdir -p /out/data && chmod 700 /out/data
 
 FROM scratch

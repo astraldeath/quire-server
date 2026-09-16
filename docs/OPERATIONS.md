@@ -29,10 +29,15 @@ For automation, account commands accept `-password-file PATH`. Protect this file
 ## Docker
 
 ```sh
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 docker compose logs quire
 # Open the server URL and enter the setup code from the logs.
 ```
+
+The default Compose file pulls `ghcr.io/astraldeath/quire-server:latest`, including the WebUI. For a source build use `docker compose -f compose.yaml -f compose.build.yaml up -d --build`.
+
+For cloudflared running on the host, set `QUIRE_PORT=8770` and `QUIRE_PUBLIC_URL=https://books.example.com` in `.env`, and point the tunnel at `http://127.0.0.1:8770`. No Caddy container is needed. If you retain a separate `docker-compose.yml`, use `-f docker-compose.yml` consistently; Docker prefers `compose.yaml` when both exist. Replace its `build:` section with `image: ghcr.io/astraldeath/quire-server:latest`, preserving ports and volumes.
 
 The Docker build includes reader commit `3297cd3d69ea6a3d86193f003ab88bf0b1119d63`. `QUIRE_READER_REF` is the build argument for selecting another reviewed revision.
 
