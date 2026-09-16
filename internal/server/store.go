@@ -42,7 +42,7 @@ func Open(path string) (*Store, error) {
 	if err = db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return fail(err)
 	}
-	if version > 8 {
+	if version > 9 {
 		return fail(errors.New("database was created by a newer server"))
 	}
 	if version == 0 {
@@ -116,6 +116,12 @@ PRAGMA user_version=7;COMMIT;`)
 	}
 	if version < 8 {
 		_, err = db.Exec(`BEGIN; ALTER TABLE tracking_links ADD COLUMN last_chapter INTEGER NOT NULL DEFAULT 0; PRAGMA user_version=8; COMMIT;`)
+		if err != nil {
+			return fail(err)
+		}
+	}
+	if version < 9 {
+		_, err = db.Exec(`BEGIN; CREATE TABLE reading_activities(user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,id TEXT NOT NULL,cursor INTEGER NOT NULL,activity TEXT NOT NULL,PRIMARY KEY(user_id,id),UNIQUE(user_id,cursor)); PRAGMA user_version=9; COMMIT;`)
 		if err != nil {
 			return fail(err)
 		}

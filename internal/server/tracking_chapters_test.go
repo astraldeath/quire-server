@@ -20,7 +20,7 @@ func TestTrackingChapterMigrationKeepsExistingLinks(t *testing.T) {
 	// Model an existing v7 database, including an acknowledged reading link.
 	if _, err = s.db.Exec(`INSERT INTO users(id,username,salt,password_hash) VALUES ('user','reader',X'',X'');
 		INSERT INTO tracking_links(user_id,book_id,series_key,series_id,title,volume,auto,complete_entry,last_step) VALUES ('user','book','',1,'Novel',0,1,0,1);
-		ALTER TABLE tracking_links DROP COLUMN last_chapter; PRAGMA user_version=7;`); err != nil {
+		ALTER TABLE tracking_links DROP COLUMN last_chapter; DROP TABLE reading_activities; PRAGMA user_version=7;`); err != nil {
 		s.Close()
 		t.Fatal(err)
 	}
@@ -37,7 +37,7 @@ func TestTrackingChapterMigrationKeepsExistingLinks(t *testing.T) {
 		t.Fatalf("migration lost existing tracking state: %v %v", links, err)
 	}
 	var version int
-	if err := s.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 8 {
+	if err := s.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 9 {
 		t.Fatalf("migration version %d: %v", version, err)
 	}
 }
