@@ -13,7 +13,7 @@ func TestWebDeepLinksAndPrivatePaths(t *testing.T) {
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "index.html"), []byte("quire-app"), 0600)
 	h := WebUI(http.NotFoundHandler(), dir)
-	for _, path := range []string{"/library", "/reading", "/series/A%2FB/tracking", "/books/" + strings.Repeat("a", 64) + "/read", "/settings/backups", "/settings/statistics", "/admin/accounts", "/account"} {
+	for _, path := range []string{"/library", "/reading", "/series/A%2FB/tracking", "/books/" + strings.Repeat("a", 64) + "/read", "/settings/backups", "/settings/statistics", "/settings/privacy", "/admin/accounts", "/account"} {
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, httptest.NewRequest("GET", path, nil))
 		if w.Code != 200 || !strings.Contains(w.Body.String(), "quire-app") {
