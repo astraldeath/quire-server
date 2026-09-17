@@ -1726,6 +1726,48 @@
           }
         }
       }
+    },
+    "/v1/privacy/sync": {
+      "post": {
+        "summary": "Read or compare-and-swap private library settings",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrivacyRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Current account privacy; stale writes have accepted=false",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrivacyResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request failed without mutation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2223,6 +2265,102 @@
             "type": "boolean"
           }
         }
+      },
+      "PrivacyCredential": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "salt": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{32}$"
+          },
+          "hash": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          }
+        },
+        "required": [
+          "salt",
+          "hash"
+        ]
+      },
+      "PrivacySettings": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "credential": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PrivacyCredential"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "books": {
+            "type": "object",
+            "maxProperties": 10000,
+            "propertyNames": {
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "additionalProperties": {
+              "type": "string",
+              "enum": [
+                "hidden",
+                "locked"
+              ]
+            }
+          }
+        },
+        "required": [
+          "credential",
+          "books"
+        ]
+      },
+      "PrivacyRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "state": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PrivacySettings"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": []
+      },
+      "PrivacyResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "state": {
+            "$ref": "#/components/schemas/PrivacySettings"
+          },
+          "accepted": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "revision",
+          "state",
+          "accepted"
+        ]
       }
     },
     "securitySchemes": {

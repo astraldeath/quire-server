@@ -39,7 +39,7 @@ The default Compose file pulls `ghcr.io/astraldeath/quire-server:latest`, includ
 
 For cloudflared running on the host, set `QUIRE_PORT=8770` and `QUIRE_PUBLIC_URL=https://books.example.com` in `.env`, and point the tunnel at `http://127.0.0.1:8770`. No Caddy container is needed. If you retain a separate `docker-compose.yml`, use `-f docker-compose.yml` consistently; Docker prefers `compose.yaml` when both exist. Replace its `build:` section with `image: ghcr.io/astraldeath/quire-server:latest`, preserving ports and volumes.
 
-The Docker build includes reader commit `de59586d4aae36e83b427414830e22679999f9b5`. `QUIRE_READER_REF` is the build argument for selecting another reviewed revision.
+The Docker build includes reader commit `705b07a67f90a80783b364e98b919fae1190852a`. `QUIRE_READER_REF` is the build argument for selecting another reviewed revision.
 
 The container runs as an unprivileged user, with a read-only root filesystem and a named data volume. Compose binds the HTTP port to the host loopback interface. Put your HTTPS reverse proxy in front of it and set `QUIRE_PUBLIC_URL` to the external origin before starting. Do not expose the unencrypted container port directly to the internet. Configure per-client login rate limits at the proxy as well; Quire ignores forwarded client-IP headers and throttles its immediate peer.
 
@@ -50,6 +50,8 @@ Docker includes CA certificates for outbound HTTPS. Compose provides a bounded t
 In the installed reader, open **Settings > Server**, enter `alice@books.example.com`, find the server, confirm its displayed address, and sign in. Use Advanced server address for custom ports. Native Windows/iOS sessions use OS credential storage. Standalone browser sessions stay in memory; the hosted WebUI uses 30-day HttpOnly, SameSite=Strict cookies (Secure on HTTPS) to preserve sign-in across refreshes and browser restarts; explicitly configure `-allowed-origins http://localhost:1420` (or `QUIRE_ALLOWED_ORIGINS`) to permit a browser client. No wildcard origins are accepted. Native apps do not need CORS configuration.
 
 Books, progress and passages sync automatically; appearance settings stay device-local. EPUB transfer is explicit in **Book details > Server copy**. Removing a server upload leaves reading data and existing device downloads intact. Identical watched and uploaded copies remain independent sources.
+
+Updated clients also sync the private-library passcode verifier and hidden/locked book settings per account. Update all clients to enforce these restrictions. Face ID and unlocked sessions remain device-local. Server backups include privacy settings; book files, metadata and backups are not encrypted, and these settings do not restrict administrator access to server files.
 
 - `GET /v1/files`: this account's available file identities and sources.
 - `PUT /v1/books/{sha256}/file`: raw EPUB, maximum 128 MiB, hash verified before registration.
