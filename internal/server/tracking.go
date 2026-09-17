@@ -27,6 +27,7 @@ type trackingLink struct {
 	Volume        float64 `json:"volume"`
 	Auto          bool    `json:"auto"`
 	CompleteEntry bool    `json:"completeEntry"`
+	Private       *bool   `json:"private,omitempty"`
 	LastStep      int     `json:"lastStep"`
 	LastChapter   int     `json:"lastChapter"`
 	LastSync      int64   `json:"lastSync"`
@@ -45,7 +46,7 @@ func trackingPatch(l trackingLink, step int, remote trackingRemote) map[string]a
 		if l.Volume > remote.Volume {
 			patch["progress_volume"] = l.Volume
 		}
-		if l.CompleteEntry && remote.State != "completed" {
+		if l.CompleteEntry && remote.State != "completed" && remote.State != "paused" && remote.State != "dropped" {
 			patch["state"] = "completed"
 		}
 	}
@@ -55,7 +56,7 @@ func trackingPatch(l trackingLink, step int, remote trackingRemote) map[string]a
 	return patch
 }
 func (s *Store) trackingLinks(user string) ([]trackingLink, error) {
-	rows, err := s.db.Query("SELECT book_id,series_key,series_id,title,volume,auto,complete_entry,last_step,last_sync,error,next_attempt,last_chapter FROM tracking_links WHERE user_id=? ORDER BY title", user)
+	rows, err := s.db.Query("SELECT book_id,series_key,series_id,title,volume,auto,complete_entry,last_step,last_sync,error,next_attempt,last_chapter,is_private FROM tracking_links WHERE user_id=? ORDER BY title", user)
 	if err != nil {
 		return nil, err
 	}
@@ -63,7 +64,7 @@ func (s *Store) trackingLinks(user string) ([]trackingLink, error) {
 	out := []trackingLink{}
 	for rows.Next() {
 		var l trackingLink
-		if err = rows.Scan(&l.BookID, &l.SeriesKey, &l.SeriesID, &l.Title, &l.Volume, &l.Auto, &l.CompleteEntry, &l.LastStep, &l.LastSync, &l.Error, &l.NextAttempt, &l.LastChapter); err != nil {
+		if err = rows.Scan(&l.BookID, &l.SeriesKey, &l.SeriesID, &l.Title, &l.Volume, &l.Auto, &l.CompleteEntry, &l.LastStep, &l.LastSync, &l.Error, &l.NextAttempt, &l.LastChapter, &l.Private); err != nil {
 			return nil, err
 		}
 		out = append(out, l)
@@ -268,7 +269,7 @@ func (s *Store) runTracking(ctx context.Context, user string, p *trackingProvide
 			e = json.Unmarshal(data, &remote)
 		}
 		if status == 404 {
-			_, _, e = p.call(ctx, "POST", path, token, map[string]any{"state": "reading", "is_private": true})
+			_, _, e = p.call(ctx, "POST", path, token, map[string]any{"state": "reading", "is_private": l.Private == nil || *l.Private})
 			remote.State = "reading"
 		}
 		if e == nil {
@@ -296,6 +297,7 @@ func (s *Store) runTracking(ctx context.Context, user string, p *trackingProvide
 func (a *api) trackingRoutes(mux *http.ServeMux) {
 	provider := newTrackingProvider()
 	a.trackingSearchRoute(mux, provider)
+	a.trackingEntryRoutes(mux, provider)
 	a.trackingSeriesRoutes(mux)
 	oauth := a.trackingOAuthRoutes(mux, provider)
 	mux.HandleFunc("GET /v1/tracking", func(w http.ResponseWriter, r *http.Request) {
@@ -308,13 +310,13 @@ func (a *api) trackingRoutes(mux *http.ServeMux) {
 			failure(w, err)
 			return
 		}
-		var name string
-		err = a.store.db.QueryRow("SELECT name FROM tracking_accounts WHERE user_id=?", u).Scan(&name)
+		var name, accountID string
+		err = a.store.db.QueryRow("SELECT name,provider_id FROM tracking_accounts WHERE user_id=?", u).Scan(&name, &accountID)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			failure(w, err)
 			return
 		}
-		respond(w, 200, map[string]any{"connected": err == nil, "name": name, "links": links, "oauthAvailable": oauth.config.enabled()})
+		respond(w, 200, map[string]any{"connected": err == nil, "name": name, "accountId": accountID, "links": links, "oauthAvailable": oauth.config.enabled()})
 	})
 	mux.HandleFunc("PUT /v1/tracking/account", func(w http.ResponseWriter, r *http.Request) {
 		u := a.authorized(w, r)
@@ -439,7 +441,7 @@ func (a *api) trackingRoutes(mux *http.ServeMux) {
 				return
 			}
 		}
-		_, err = a.store.db.Exec(`INSERT INTO tracking_links(user_id,book_id,series_key,series_id,title,volume,auto,complete_entry) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(user_id,book_id) DO UPDATE SET series_key=excluded.series_key,series_id=excluded.series_id,title=excluded.title,volume=excluded.volume,auto=excluded.auto,complete_entry=excluded.complete_entry,last_step=0,last_chapter=0,last_sync=0,error='',next_attempt=0`, u, id, l.SeriesKey, l.SeriesID, l.Title, l.Volume, l.Auto, l.CompleteEntry)
+		_, err = a.store.db.Exec(`INSERT INTO tracking_links(user_id,book_id,series_key,series_id,title,volume,auto,complete_entry,is_private) VALUES(?,?,?,?,?,?,?,?,coalesce(?,1)) ON CONFLICT(user_id,book_id) DO UPDATE SET series_key=excluded.series_key,series_id=excluded.series_id,title=excluded.title,volume=excluded.volume,auto=excluded.auto,complete_entry=excluded.complete_entry,is_private=coalesce(?,tracking_links.is_private),last_step=0,last_chapter=0,last_sync=0,error='',next_attempt=0`, u, id, l.SeriesKey, l.SeriesID, l.Title, l.Volume, l.Auto, l.CompleteEntry, l.Private, l.Private)
 		if err != nil {
 			failure(w, err)
 			return

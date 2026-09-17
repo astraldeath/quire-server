@@ -16,7 +16,8 @@ func TestTrackingBackupKeepsLinksButDropsCredentials(t *testing.T) {
 	user, _ := s.authenticate(token)
 	id := strings.Repeat("d", 64)
 	syncRequest(t, h, token, 0, Operation{ID: randomID(), BookID: id, Kind: "book", RecordID: "default", Value: json.RawMessage(`{"title":"Book"}`)})
-	request(t, h, "PUT", "/v1/tracking/books/"+id, token, trackingLink{SeriesID: 42, Title: "Novel", Auto: true}, 204)
+	private := false
+	request(t, h, "PUT", "/v1/tracking/books/"+id, token, trackingLink{SeriesID: 42, Title: "Novel", Auto: true, Private: &private}, 204)
 	if err := s.saveTrackingToken(user, "provider-user", "Reader", "mb-private"); err != nil {
 		t.Fatal(err)
 	}
@@ -34,7 +35,7 @@ func TestTrackingBackupKeepsLinksButDropsCredentials(t *testing.T) {
 	}
 	defer restored.Close()
 	links, err := restored.trackingLinks(user)
-	if err != nil || len(links) != 1 || links[0].Auto {
+	if err != nil || len(links) != 1 || links[0].Auto || links[0].Private == nil || *links[0].Private {
 		t.Fatal("links missing or tracking enabled", links, err)
 	}
 	var n int

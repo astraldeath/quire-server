@@ -19,6 +19,7 @@ func (a *api) trackingSeriesRoutes(mux *http.ServeMux) {
 			SeriesID  int64  `json:"seriesId"`
 			Title     string `json:"title"`
 			Auto      bool   `json:"auto"`
+			Private   *bool  `json:"private"`
 		}
 		if !decode(w, r, &in, 4096) {
 			return
@@ -82,7 +83,7 @@ func (a *api) trackingSeriesRoutes(mux *http.ServeMux) {
 		}
 		linked, overrides := 0, 0
 		for _, book := range members {
-			result, e := tx.Exec(`INSERT INTO tracking_links(user_id,book_id,series_key,series_id,title,volume,auto,complete_entry) VALUES(?,?,?,?,?,?,?,0) ON CONFLICT(user_id,book_id) DO UPDATE SET series_id=excluded.series_id,title=excluded.title,volume=excluded.volume,auto=excluded.auto,complete_entry=0,last_step=0,last_chapter=0,last_sync=0,error='',next_attempt=0 WHERE tracking_links.series_key=excluded.series_key`, user, book.id, in.SeriesKey, in.SeriesID, in.Title, book.volume, in.Auto)
+			result, e := tx.Exec(`INSERT INTO tracking_links(user_id,book_id,series_key,series_id,title,volume,auto,complete_entry,is_private) VALUES(?,?,?,?,?,?,?,0,coalesce(?,1)) ON CONFLICT(user_id,book_id) DO UPDATE SET series_id=excluded.series_id,title=excluded.title,volume=excluded.volume,auto=excluded.auto,complete_entry=0,is_private=coalesce(?,tracking_links.is_private),last_step=0,last_chapter=0,last_sync=0,error='',next_attempt=0 WHERE tracking_links.series_key=excluded.series_key`, user, book.id, in.SeriesKey, in.SeriesID, in.Title, book.volume, in.Auto, in.Private, in.Private)
 			if e != nil {
 				failure(w, e)
 				return

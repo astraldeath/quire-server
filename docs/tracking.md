@@ -47,10 +47,31 @@ chapters continue syncing after the initial reading state. MangaBaka accepts up 
 10000 chapters; larger local values remain saved and show a tracking error without
 sending an invalid update. External progress is
 never lowered; notes, ratings, and other external fields are untouched. New external
-entries are private. Automatic reads do not resume paused or dropped entries.
+entries use the privacy choice saved with the link (private by default for legacy
+clients and existing links). Automatic reads do not resume or complete paused or
+dropped entries.
+
+The tracker editor reads and saves state, chapter/volume progress, rating, start
+and finish dates, and privacy. `GET /v1/tracking/entries/{seriesId}` returns
+`{entry, accountId}`; a missing provider entry returns `entry: null`. Entry fields
+use MangaBaka's snake_case names; dates are normalized to `YYYY-MM-DD`.
+`POST` on the same path accepts `{expectedAccountId, is_private}` to add a missing
+entry as `plan_to_read`, or update only privacy on an existing entry. `PUT` accepts
+`{expectedAccountId, changes}` and sends only the explicitly edited fields. A
+missing entry during `PUT` must be reloaded and added again. Both writes reject
+an account mismatch. Entry access requires a live link in the requesting user's
+library and a connected MangaBaka account. `/v1/tracking` also returns `accountId`.
+
+Progress and rating accept null or numbers (0–10000 for progress, 0–100 for rating);
+dates accept null or a valid date in years 1679–2262. Manual state/progress changes
+acknowledge the current local positions of all links to that provider series, so
+automatic sync waits for subsequent reading progress. Privacy changes update all
+matching local links' creation preferences. Book and series link requests accept
+an optional `private` boolean; omitting it preserves an existing preference.
 
 Normal authenticated users can access `/v1/tracking`, `/v1/tracking/search`,
-`/v1/tracking/account`, `/v1/tracking/books/{id}`, and `/v1/tracking/sync`.
+`/v1/tracking/account`, `/v1/tracking/books/{id}`, `/v1/tracking/series`,
+`/v1/tracking/entries/{seriesId}`, and `/v1/tracking/sync`.
 Authentication and cookie session binding follow the existing Quire API.
 
 Provider contracts checked against https://mangabaka.org/api.json and

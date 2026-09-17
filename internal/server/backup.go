@@ -287,7 +287,7 @@ func prepareRestoredDatabase(path string, files map[string]backupEntry) error {
 	if err = db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
-	if version < 6 || version > 10 {
+	if version < 6 || version > 11 {
 		return errors.New("backup database version is not supported")
 	}
 	var check string

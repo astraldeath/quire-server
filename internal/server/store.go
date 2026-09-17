@@ -42,7 +42,7 @@ func Open(path string) (*Store, error) {
 	if err = db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return fail(err)
 	}
-	if version > 10 {
+	if version > 11 {
 		return fail(errors.New("database was created by a newer server"))
 	}
 	if version == 0 {
@@ -128,6 +128,12 @@ PRAGMA user_version=7;COMMIT;`)
 	}
 	if version < 10 {
 		_, err = db.Exec(`BEGIN; CREATE TABLE privacy_settings(user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,revision INTEGER NOT NULL,state TEXT NOT NULL); PRAGMA user_version=10; COMMIT;`)
+		if err != nil {
+			return fail(err)
+		}
+	}
+	if version < 11 {
+		_, err = db.Exec(`BEGIN; ALTER TABLE tracking_links ADD COLUMN is_private INTEGER NOT NULL DEFAULT 1; PRAGMA user_version=11; COMMIT;`)
 		if err != nil {
 			return fail(err)
 		}
