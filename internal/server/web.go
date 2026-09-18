@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-var webRoute = regexp.MustCompile(`^/(library|reading|account|settings(/(appearance|library|backups|statistics|privacy))?|admin(/(overview|libraries|folders|settings|accounts|invites|backups))?|books/[a-f0-9]{64}(/(read|tracking))?|series/[^/]+(/tracking)?)$`)
+var webRoute = regexp.MustCompile(`^/(library|reading|account|settings(/(appearance|library|backups|statistics|privacy|updates))?|admin(/(overview|libraries|folders|settings|accounts|invites|backups))?|books/[a-f0-9]{64}(/(read|tracking))?|series/[^/]+(/tracking)?)$`)
 
 // WebUI serves only a dedicated reader build directory, never the data directory.
 func WebUI(api http.Handler, directory string) http.Handler {
