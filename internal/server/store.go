@@ -138,6 +138,6 @@ PRAGMA user_version=7;COMMIT;`)
 			return fail(err)
 		}
 	}
-	return &Store{db: db, data: filepath.Dir(path), metadata: newMetadataCache(128, 16<<20, epubMetadata)}, nil
+	return &Store{db: db, data: filepath.Dir(path), metadata: newMetadataCache(128, 16<<20, formatMetadata)}, nil
 }
 func (s *Store) Close() error { return s.db.Close() }

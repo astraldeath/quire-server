@@ -19,14 +19,14 @@ bin/quire-server serve -web-dir ../quire-reader/dist-web
 
 Open `http://localhost:8080`. On a new installation the server prints a one-time setup code to its console. Enter that code and choose the initial administrator username and password. The code changes when the server restarts; setup closes permanently once an admin exists. For an existing installation, run `bin/quire-server admin-promote -username NAME` locally to explicitly promote an existing account instead. Existing accounts, books and reading data are preserved.
 
-The browser uses the same reader code as the installed apps. Hosted builds have same-server sign-in and account-specific IndexedDB caches. Hosted browser sessions use 30-day HttpOnly cookies and survive refresh and browser restarts. EPUB imports upload to the user's personal library. Covers and metadata arrive automatically; EPUB bytes download on opening. Revoking server access does not remotely erase cached files.
+The browser uses the same reader code as the installed apps. Hosted builds have same-server sign-in and account-specific IndexedDB caches. Hosted browser sessions use 30-day HttpOnly cookies and survive refresh and browser restarts. book imports upload to the user's personal library. Covers and metadata arrive automatically; book bytes download on opening. Revoking server access does not remotely erase cached files.
 
 ## Administration
 
-- **Overview:** account count, active book copies and active EPUB storage (not total disk usage or orphaned snapshots).
+- **Overview:** account count, active book copies and active book storage (not total disk usage or orphaned snapshots).
 - **Accounts:** roles, disable/enable and revoke devices. The last active admin is protected. Password recovery remains available through the local `password-reset` command. Users can change their own passwords in the account menu; this signs out all sessions.
 - **Invitations:** single-use codes/links, seven-day expiry, revoke unused invitations, and preassign shared libraries. New accounts are always members. Invite secrets are hashed in storage and shown only when issued.
-- **Libraries:** shared collections, membership, EPUB uploads, common metadata editing and uploaded-copy removal. Shared library storage is separate from personal accounts. Administration has no endpoint for reading members' annotations or positions.
+- **Libraries:** shared collections, membership, book uploads, common metadata editing and uploaded-copy removal. Shared library storage is separate from personal accounts. Administration has no endpoint for reading members' annotations or positions.
 - **Watched folders:** register server paths against a personal or shared library; scan automatically when added or on demand, review last scan errors, remove watches without modifying source files.
 - **Settings:** server name and scan interval, including manual-only scans.
 
@@ -46,7 +46,7 @@ Updates use the same pull and up commands; your named data volume is retained. `
 
 To build locally instead: `docker compose -f compose.yaml -f compose.build.yaml up -d --build`. Source builds require Go 1.27.1 or newer.
 
-The image pins reader commit `30e3a423be9ad38d5d0101658886e4c6be221411`. Use `QUIRE_READER_REF` to build another reviewed revision.
+The image pins reader commit `e41a264eba437bd366173944890b62565ee3fb10`. Use `QUIRE_READER_REF` to build another reviewed revision.
 
 - [Production deployment and upgrades](docs/PRODUCTION.md)
 - [Server commands, Docker, reader connections, and watched folders](docs/OPERATIONS.md)
@@ -66,3 +66,5 @@ go build ./cmd/quire-server
 Format Go changes with `gofmt`. Tests use isolated temporary databases. Use incremental Conventional Commits; never commit runtime data, books, credentials, or generated binaries.
 
 The server is licensed under [AGPL-3.0-only](LICENSE). The API contract is separately licensed under MIT, allowing the [MIT reader](https://github.com/astraldeath/quire) to generate client code without copying server implementation.
+
+Supported files: EPUB, CBZ, FB2/FBZ, and DRM-free MOBI/AZW3 (128 MiB maximum). Downloads and backups preserve the original file format. Watched directories seed nested library folders; later user organization is preserved. Folder assignments sync with book metadata.

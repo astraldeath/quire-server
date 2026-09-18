@@ -39,7 +39,7 @@ The default Compose file pulls `ghcr.io/astraldeath/quire-server:latest`, includ
 
 For cloudflared running on the host, set `QUIRE_PORT=8770` and `QUIRE_PUBLIC_URL=https://books.example.com` in `.env`, and point the tunnel at `http://127.0.0.1:8770`. No Caddy container is needed. If you retain a separate `docker-compose.yml`, use `-f docker-compose.yml` consistently; Docker prefers `compose.yaml` when both exist. Replace its `build:` section with `image: ghcr.io/astraldeath/quire-server:latest`, preserving ports and volumes.
 
-The Docker build includes reader commit `30e3a423be9ad38d5d0101658886e4c6be221411`. `QUIRE_READER_REF` is the build argument for selecting another reviewed revision.
+The Docker build includes reader commit `e41a264eba437bd366173944890b62565ee3fb10`. `QUIRE_READER_REF` is the build argument for selecting another reviewed revision.
 
 The container runs as an unprivileged user, with a read-only root filesystem and a named data volume. Compose binds the HTTP port to the host loopback interface. Put your HTTPS reverse proxy in front of it and set `QUIRE_PUBLIC_URL` to the external origin before starting. Do not expose the unencrypted container port directly to the internet. Configure per-client login rate limits at the proxy as well; Quire ignores forwarded client-IP headers and throttles its immediate peer.
 
@@ -69,13 +69,13 @@ Plain `go build` and Docker builds without identity arguments report `dev` / `un
 
 In the installed reader, open **Settings > Server**, enter `alice@books.example.com`, find the server, confirm its displayed address, and sign in. Use Advanced server address for custom ports. Native Windows/iOS sessions use OS credential storage. Standalone browser sessions stay in memory; the hosted WebUI uses 30-day HttpOnly, SameSite=Strict cookies (Secure on HTTPS) to preserve sign-in across refreshes and browser restarts; explicitly configure `-allowed-origins http://localhost:1420` (or `QUIRE_ALLOWED_ORIGINS`) to permit a browser client. No wildcard origins are accepted. Native apps do not need CORS configuration.
 
-Books, progress and passages sync automatically; appearance settings stay device-local. EPUB transfer is explicit in **Book details > Server copy**. Removing a server upload leaves reading data and existing device downloads intact. Identical watched and uploaded copies remain independent sources.
+Books, progress and passages sync automatically; appearance settings stay device-local. book transfer is explicit in **Book details > Server copy**. Removing a server upload leaves reading data and existing device downloads intact. Identical watched and uploaded copies remain independent sources.
 
 Updated clients also sync the private-library passcode verifier and hidden/locked book settings per account. Update all clients to enforce these restrictions. Face ID and unlocked sessions remain device-local. Server backups include privacy settings; book files, metadata and backups are not encrypted, and these settings do not restrict administrator access to server files.
 
 - `GET /v1/files`: this account's available file identities and sources.
-- `PUT /v1/books/{sha256}/file`: raw EPUB, maximum 128 MiB, hash verified before registration.
-- `GET /v1/books/{sha256}/file`: owned EPUB download.
+- `PUT /v1/books/{sha256}/file`: raw book, maximum 128 MiB, hash verified before registration.
+- `GET /v1/books/{sha256}/file`: owned book download.
 - `DELETE /v1/books/{sha256}/file`: remove uploaded source only; watched-only files return 403.
 
 Interrupted uploads never become available. Downloads are checked against the identity again by the reader. Server snapshots live beneath the private data directory; source folders are never written to. Unreferenced snapshots from failed scans may remain on disk in this initial version; automatic garbage collection is not implemented.
@@ -89,14 +89,14 @@ bin/quire-server watch-list
 bin/quire-server watch-remove -id WATCH_ID
 ```
 
-Serving scans registered folders at startup and every five minutes. Change this with `-scan-interval 10m`; `0` disables background scans. Scans create private snapshots and seed metadata from the EPUB. Existing manual metadata and deletion records are preserved. A successful scan reconciles removed source files while retaining reading data. Missing roots, changed root filesystem identity, read errors, or files changing during the scan leave the prior availability list intact. Symlinks are not followed. To change a mounted folder's identity, remove the old watch and register the intended folder again. Removing a watch keeps original files and reading metadata.
+Serving scans registered folders at startup and every five minutes. Change this with `-scan-interval 10m`; `0` disables background scans. Scans create private snapshots and seed metadata from the book. Existing manual metadata and deletion records are preserved. A successful scan reconciles removed source files while retaining reading data. Missing roots, changed root filesystem identity, read errors, or files changing during the scan leave the prior availability list intact. Symlinks are not followed. To change a mounted folder's identity, remove the old watch and register the intended folder again. Removing a watch keeps original files and reading metadata.
 
 For Docker, add a read-only bind mount such as `/your/library:/library:ro`, then run `docker compose exec quire /quire-server watch-add -username alice -path /library`. Keep the `/data` named volume writable. Folder paths and account creation are owner commands; clients cannot select arbitrary server filesystem paths.
 
 ### Library previews
 
-Watched EPUBs publish their embedded title, author, and series metadata during scanning. Existing user edits are preserved. Authenticated `GET /v1/books/{id}/metadata` returns embedded metadata and a small JPEG cover preview (up to 320 x 480 pixels), without transferring the EPUB. Cover extraction accepts bounded raster images only; missing or unsupported covers use the reader fallback. No publisher scripts or external URLs are loaded.
+Watched books publish their embedded title, author, and series metadata during scanning. Existing user edits are preserved. Authenticated `GET /v1/books/{id}/metadata` returns embedded metadata and a small JPEG cover preview (up to 320 x 480 pixels), without transferring the book. Cover extraction accepts bounded raster images only; missing or unsupported covers use the reader fallback. No publisher scripts or external URLs are loaded.
 
-Readers cache previews automatically and fetch the EPUB through the existing authenticated file endpoint when a user opens a book. Downloads are hash-verified and stored for offline reading; notes and user metadata are retained.
+Readers cache previews automatically and fetch the book through the existing authenticated file endpoint when a user opens a book. Downloads are hash-verified and stored for offline reading; notes and user metadata are retained.
 
-Shared libraries can be renamed or deleted from Administration. Deleting a library removes its grants, watch registrations, and managed server files, but preserves watched originals and members' own reading records and downloaded copies. Scan history reports newly imported and existing distinct EPUBs plus skipped non-EPUB files/symlinks; failed scans keep the previous catalog.
+Shared libraries can be renamed or deleted from Administration. Deleting a library removes its grants, watch registrations, and managed server files, but preserves watched originals and members' own reading records and downloaded copies. Scan history reports newly imported and existing distinct books plus skipped unsupported files/symlinks; failed scans keep the previous catalog.

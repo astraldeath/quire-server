@@ -96,12 +96,28 @@ func validateOperation(op Operation) error {
 	case "book":
 		var v struct {
 			Title  string   `json:"title"`
+			Format string   `json:"format"`
+			Folder string   `json:"folder"`
 			Author string   `json:"author"`
 			Series string   `json:"series"`
 			Volume *float64 `json:"volume"`
 		}
-		if strictJSON(op.Value, &v) != nil || v.Title == "" || len(v.Title) > 2048 || len(v.Author) > 2048 || len(v.Series) > 2048 {
+		if strictJSON(op.Value, &v) != nil || v.Title == "" || len(v.Title) > 2048 || len(v.Author) > 2048 || len(v.Series) > 2048 || !validFolder(v.Folder) || (v.Format != "" && !validBookFormat(v.Format)) {
 			return ErrInvalid
+		}
+		// Optional means absent, not null: readers require strings whenever these
+		// fields are present. encoding/json otherwise accepts null into a string.
+		var fields map[string]json.RawMessage
+		if json.Unmarshal(op.Value, &fields) != nil {
+			return ErrInvalid
+		}
+		if fields["format"] != nil && !validBookFormat(v.Format) {
+			return ErrInvalid
+		}
+		for _, field := range []string{"folder", "format"} {
+			if bytes.Equal(bytes.TrimSpace(fields[field]), []byte("null")) {
+				return ErrInvalid
+			}
 		}
 	case "position":
 		var v struct {
@@ -193,6 +209,19 @@ func (s *Store) Sync(ctx context.Context, user string, req SyncRequest) (SyncRes
 			return SyncResponse{}, ErrConflict
 		}
 		conflict := op.BaseRevision != record.Revision
+		// Older clients send the original metadata shape. Missing optional fields
+		// preserve the current value; an explicit empty folder moves to the root.
+		if !conflict && op.Kind == "book" && !op.Deleted && len(record.Candidates) == 1 && !record.Candidates[0].Deleted {
+			var incoming, previous map[string]json.RawMessage
+			if json.Unmarshal(op.Value, &incoming) == nil && json.Unmarshal(record.Candidates[0].Value, &previous) == nil {
+				for _, field := range []string{"folder", "format"} {
+					if _, present := incoming[field]; !present && previous[field] != nil {
+						incoming[field] = previous[field]
+					}
+				}
+				op.Value, _ = json.Marshal(incoming)
+			}
+		}
 		if !conflict {
 			record.Candidates = nil
 		}

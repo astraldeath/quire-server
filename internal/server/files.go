@@ -29,6 +29,12 @@ type FileInfo struct {
 }
 
 func (s *Store) objectPath(user, id string) string {
+	for _, format := range bookFormats {
+		candidate := filepath.Join(s.data, "objects", user, id+"."+format)
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+	}
 	return filepath.Join(s.data, "objects", user, id+".epub")
 }
 func validateEPUB(path string) error {
@@ -99,10 +105,11 @@ func (s *Store) stage(user string, r io.Reader, expected string) (string, int64,
 	if expected != "" && expected != id {
 		return "", 0, ErrInvalid
 	}
-	if err = validateEPUB(f.Name()); err != nil {
+	format, err := detectBookFormat(f.Name())
+	if err != nil {
 		return "", 0, err
 	}
-	target := s.objectPath(user, id)
+	target := filepath.Join(dir, id+"."+format)
 	if _, err = os.Stat(target); errors.Is(err, os.ErrNotExist) {
 		if err = os.Rename(f.Name(), target); err != nil {
 			return "", 0, err
@@ -231,9 +238,11 @@ func (a *api) fileRoutes(mux *http.ServeMux) {
 			failure(w, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/epub+zip")
-		w.Header().Set("Content-Disposition", `attachment; filename="book.epub"`)
-		http.ServeContent(w, r, "book.epub", info.ModTime(), f)
+		format := strings.TrimPrefix(filepath.Ext(f.Name()), ".")
+		name := "book." + format
+		w.Header().Set("Content-Type", bookMIME(format))
+		w.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
+		http.ServeContent(w, r, name, info.ModTime(), f)
 	})
 	mux.HandleFunc("DELETE /v1/books/{id}/file", func(w http.ResponseWriter, r *http.Request) {
 		user := a.authorized(w, r)
@@ -330,7 +339,7 @@ func (s *Store) ScanWatch(id string) (scanErr error) {
 		if entry.IsDir() {
 			return nil
 		}
-		if !strings.EqualFold(filepath.Ext(path), ".epub") {
+		if !supportedBookFilename(path) {
 			skipped++
 			return nil
 		}
@@ -358,7 +367,7 @@ func (s *Store) ScanWatch(id string) (scanErr error) {
 		book, size, e := s.stage(user, f, "")
 		f.Close()
 		if e != nil {
-			return fmt.Errorf("cannot snapshot EPUB: %w", e)
+			return fmt.Errorf("cannot snapshot book: %w", e)
 		}
 		after, e := os.Stat(path)
 		if e != nil {
@@ -416,13 +425,20 @@ func (s *Store) ScanWatch(id string) (scanErr error) {
 		if _, err = tx.Exec("INSERT INTO files VALUES (?,?,'watch',?,?)", user, item.book, id+"/"+item.path, item.size); err != nil {
 			return err
 		}
-		if err = seedBook(tx, user, item.book, item.title, metadata[item.book]); err != nil {
+		folder := filepath.ToSlash(filepath.Dir(item.path))
+		if folder == "." {
+			folder = ""
+		}
+		if !validFolder(folder) {
+			return ErrInvalid
+		}
+		if err = seedBook(tx, user, item.book, item.title, metadata[item.book], folder); err != nil {
 			return err
 		}
 	}
 	return tx.Commit()
 }
-func seedBook(tx *sql.Tx, user, book, title string, metadata bookMetadata) error {
+func seedBook(tx *sql.Tx, user, book, title string, metadata bookMetadata, folders ...string) error {
 	// Watched sources retain their filename; uploaded object names are hashes.
 	metadata = inferMetadataVolume(metadata, title)
 	revision := int64(1)
@@ -447,7 +463,17 @@ func seedBook(tx *sql.Tx, user, book, title string, metadata bookMetadata) error
 	if metadata.Title != "" {
 		title = metadata.Title
 	}
-	value, _ := json.Marshal(map[string]any{"title": title, "author": metadata.Author, "series": metadata.Series, "volume": metadata.Volume})
+	fields := map[string]any{"title": title, "author": metadata.Author, "series": metadata.Series, "volume": metadata.Volume}
+	if metadata.Format != "" {
+		fields["format"] = metadata.Format
+	}
+	if metadata.Folder != "" && validFolder(metadata.Folder) {
+		fields["folder"] = metadata.Folder
+	}
+	if len(folders) > 0 && folders[0] != "" {
+		fields["folder"] = folders[0]
+	}
+	value, _ := json.Marshal(fields)
 	if raw != "" {
 		var old []Candidate
 		if json.Unmarshal([]byte(raw), &old) == nil && len(old) == 1 && string(old[0].Value) == string(value) {

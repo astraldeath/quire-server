@@ -21,7 +21,7 @@ import (
 const backupFormat = 1
 const maxRestoreBytes int64 = 100 << 30
 
-var objectName = regexp.MustCompile(`^objects/[a-f0-9]{64}/[a-f0-9]{64}\.epub$`)
+var objectName = regexp.MustCompile(`^objects/[a-f0-9]{64}/[a-f0-9]{64}\.(epub|cbz|fb2|fbz|mobi|azw3)$`)
 
 type backupEntry struct {
 	Size   int64  `json:"size"`
@@ -72,7 +72,7 @@ func (s *Store) Backup(ctx context.Context, destination string) (err error) {
 			rows.Close()
 			return err
 		}
-		name := "objects/" + owner + "/" + book + ".epub"
+		name := "objects/" + owner + "/" + filepath.Base(s.objectPath(owner, book))
 		if !archiveName(name) {
 			rows.Close()
 			return ErrInvalid
@@ -148,7 +148,7 @@ func (s *Store) Backup(ctx context.Context, destination string) (err error) {
 			return e
 		}
 		digest := hex.EncodeToString(hash.Sum(nil))
-		if name != "quire.db" && strings.TrimSuffix(filepath.Base(name), ".epub") != digest {
+		if name != "quire.db" && strings.TrimSuffix(filepath.Base(name), filepath.Ext(name)) != digest {
 			return errors.New("book snapshot checksum mismatch")
 		}
 		manifest.Files[name] = backupEntry{n, digest}
@@ -265,8 +265,14 @@ func RestoreBackup(archive, destination string) error {
 		if n != expected.Size || digest != expected.SHA256 {
 			return errors.New("backup checksum mismatch")
 		}
-		if name != "quire.db" && digest != strings.TrimSuffix(filepath.Base(name), ".epub") {
+		if name != "quire.db" && digest != strings.TrimSuffix(filepath.Base(name), filepath.Ext(name)) {
 			return errors.New("book checksum mismatch")
+		}
+		if name != "quire.db" {
+			format, e := detectBookFormat(dest)
+			if e != nil || "."+format != filepath.Ext(name) {
+				return errors.New("backup book format mismatch")
+			}
 		}
 	}
 	if err = prepareRestoredDatabase(filepath.Join(stage, "quire.db"), manifest.Files); err != nil {
@@ -305,7 +311,13 @@ func prepareRestoredDatabase(path string, files map[string]backupEntry) error {
 			rows.Close()
 			return err
 		}
-		if _, ok := files["objects/"+owner+"/"+book+".epub"]; !ok {
+		found := 0
+		for _, format := range bookFormats {
+			if _, ok := files["objects/"+owner+"/"+book+"."+format]; ok {
+				found++
+			}
+		}
+		if found != 1 {
 			rows.Close()
 			return errors.New("backup is missing a referenced book")
 		}

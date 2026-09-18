@@ -19,6 +19,8 @@ import (
 )
 
 type bookMetadata struct {
+	Folder string   `json:"folder,omitempty"`
+	Format string   `json:"format,omitempty"`
 	Title  string   `json:"title"`
 	Author string   `json:"author"`
 	Series string   `json:"series"`
