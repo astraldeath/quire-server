@@ -46,7 +46,7 @@ Updates use the same pull and up commands; your named data volume is retained. `
 
 To build locally instead: `docker compose -f compose.yaml -f compose.build.yaml up -d --build`. Source builds require Go 1.27.1 or newer.
 
-The image pins reader commit `7d06ac0a8ce5a4d27dd1ecda3ad761cfcfcb5dbd`. Use `QUIRE_READER_REF` to build another reviewed revision.
+The image pins reader commit `43561c671dfec6edb4c18f13eb4c43ba9954565b`. Use `QUIRE_READER_REF` to build another reviewed revision.
 
 - [Production deployment and upgrades](docs/PRODUCTION.md)
 - [Server commands, Docker, reader connections, and watched folders](docs/OPERATIONS.md)
