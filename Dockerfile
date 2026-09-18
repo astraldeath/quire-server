@@ -1,8 +1,9 @@
 FROM --platform=$BUILDPLATFORM node:24-alpine AS reader
 RUN apk add --no-cache git ca-certificates
-ARG QUIRE_READER_REF=cfa9afbb8d0c37091291ae1aa2be66a60c7d1576
+ARG QUIRE_READER_REF=ea75f8fe70531fb842dd3bf80815f7b9478bf8d7
 RUN git clone https://github.com/astraldeath/quire.git /reader \
-    && cd /reader && git checkout --detach "$QUIRE_READER_REF"
+    && cd /reader && git checkout --detach "$QUIRE_READER_REF" \
+    && git rev-parse HEAD > /reader-revision
 WORKDIR /reader
 RUN npm ci && npm run build:web
 
@@ -14,7 +15,12 @@ COPY cmd ./cmd
 COPY internal ./internal
 ARG TARGETOS
 ARG TARGETARCH
-RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w" -o /out/quire-server ./cmd/quire-server \
+ARG QUIRE_VERSION=dev
+ARG QUIRE_REVISION=unknown
+ARG QUIRE_BUILD_TIME=unknown
+COPY --from=reader /reader-revision /reader-revision
+RUN READER_REVISION=$(cat /reader-revision) \
+    && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w -X quire.local/server/internal/server.BuildVersion=$QUIRE_VERSION -X quire.local/server/internal/server.BuildRevision=$QUIRE_REVISION -X quire.local/server/internal/server.BuildTime=$QUIRE_BUILD_TIME -X quire.local/server/internal/server.ReaderRevision=$READER_REVISION" -o /out/quire-server ./cmd/quire-server \
     && mkdir -p /out/data && chmod 700 /out/data
 
 FROM scratch

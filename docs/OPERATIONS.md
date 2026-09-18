@@ -39,11 +39,31 @@ The default Compose file pulls `ghcr.io/astraldeath/quire-server:latest`, includ
 
 For cloudflared running on the host, set `QUIRE_PORT=8770` and `QUIRE_PUBLIC_URL=https://books.example.com` in `.env`, and point the tunnel at `http://127.0.0.1:8770`. No Caddy container is needed. If you retain a separate `docker-compose.yml`, use `-f docker-compose.yml` consistently; Docker prefers `compose.yaml` when both exist. Replace its `build:` section with `image: ghcr.io/astraldeath/quire-server:latest`, preserving ports and volumes.
 
-The Docker build includes reader commit `cfa9afbb8d0c37091291ae1aa2be66a60c7d1576`. `QUIRE_READER_REF` is the build argument for selecting another reviewed revision.
+The Docker build includes reader commit `ea75f8fe70531fb842dd3bf80815f7b9478bf8d7`. `QUIRE_READER_REF` is the build argument for selecting another reviewed revision.
 
 The container runs as an unprivileged user, with a read-only root filesystem and a named data volume. Compose binds the HTTP port to the host loopback interface. Put your HTTPS reverse proxy in front of it and set `QUIRE_PUBLIC_URL` to the external origin before starting. Do not expose the unencrypted container port directly to the internet. Configure per-client login rate limits at the proxy as well; Quire ignores forwarded client-IP headers and throttles its immediate peer.
 
 Docker includes CA certificates for outbound HTTPS. Compose provides a bounded temporary filesystem for backup staging while keeping the image read-only.
+
+## Server update checks and installation
+
+Settings shows the installed server build and [published changes](../CHANGELOG.md). Every signed-in account can read this information; only administrators see the management instructions. The server never replaces its own binary or container.
+
+The server checks the fixed public GitHub `server-latest/update.json` release asset at most once per six hours, on demand. The request sends no account information or credentials, times out after eight seconds, and accepts at most 64 KiB. GitHub outages do not affect reading or sync. On failure, the last successful metadata and its check time remain visible alongside an error. Restarting clears the in-memory cache.
+
+To install an available update, first review its changes and create a backup using the [backup procedure](BACKUPS.md). From the directory containing your deployment's Compose file, run:
+
+```sh
+docker compose pull quire
+docker compose up -d quire
+docker compose logs --tail=100 quire
+```
+
+Use the same `-f` options as your deployment. A source-built deployment instead uses `docker compose -f compose.yaml -f compose.build.yaml up -d --build quire`. Preserve the existing data volume. After startup, reload Settings and verify the installed revision. The hosted reader changes with the image; reload its browser page to load the new reader.
+
+Official main images have version `main.YYYYMMDD.<12-character revision>`. The image embeds the full server revision, the source commit's timestamp, and the exact reader revision actually checked out. CI publishes the matching rolling prerelease manifest only after the image push succeeds. Tag images use the tag as their version; the update channel tracks main. An update is offered only for a different revision with a strictly newer source timestamp, so an older main image is not offered to a newer installed build.
+
+Plain `go build` and Docker builds without identity arguments report `dev` / `unknown` and cannot determine whether they are current. Custom distributors can embed `QUIRE_VERSION`, `QUIRE_REVISION` (full commit SHA), and `QUIRE_BUILD_TIME` (the source commit's RFC3339 timestamp) as Docker build arguments. The Go equivalents are `-ldflags '-X quire.local/server/internal/server.BuildVersion=... -X quire.local/server/internal/server.BuildRevision=... -X quire.local/server/internal/server.BuildTime=... -X quire.local/server/internal/server.ReaderRevision=...'`. Use identity values for the sources actually built.
 
 ## Reader connection and file transfer
 

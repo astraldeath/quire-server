@@ -18,6 +18,7 @@ type loginWindow struct {
 	until time.Time
 }
 type api struct {
+	updates      *updateChecker
 	publicOrigin string
 	setupCode    string
 	store        *Store
@@ -135,7 +136,9 @@ func NewHandler(store *Store, publicURL, name string) http.Handler {
 }
 func NewConfiguredHandler(store *Store, publicURL, name, setupCode string) http.Handler {
 	a := &api{publicOrigin: strings.TrimRight(publicURL, "/"), setupCode: setupCode, store: store, attempts: map[string]loginWindow{}, slots: make(chan struct{}, 2)}
+	a.updates = newUpdateChecker()
 	mux := http.NewServeMux()
+	a.updateRoutes(mux)
 	a.browserRoutes(mux)
 	a.fileRoutes(mux)
 	a.backupRoutes(mux)

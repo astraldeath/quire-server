@@ -46,7 +46,7 @@ jobs:
       (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       packages: write
     concurrency:
       group: publish-${{ github.ref }}
@@ -56,6 +56,19 @@ jobs:
         with:
           persist-credentials: false
       - uses: docker/setup-buildx-action@594f3bf4285d9ea8dc53c9a0c9c4092420091003 # v4
+      - name: Identify published build
+        id: identity
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          revision=$(git rev-parse HEAD)
+          published_at=$(git show -s --format=%cI HEAD)
+          version="main.$(git show -s --format=%cs HEAD | tr -d '-').${revision:0:12}"
+          if [ "$REF_TYPE" = tag ]; then version="$REF_NAME"; fi
+          echo "revision=$revision" >> "$GITHUB_OUTPUT"
+          echo "published_at=$published_at" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
         with:
           registry: ghcr.io
@@ -81,3 +94,35 @@ jobs:
           cache-to: type=gha,mode=max
           provenance: mode=max
           sbom: true
+          build-args: |
+            QUIRE_VERSION=${{ steps.identity.outputs.version }}
+            QUIRE_REVISION=${{ steps.identity.outputs.revision }}
+            QUIRE_BUILD_TIME=${{ steps.identity.outputs.published_at }}
+      - name: Publish latest server update information
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          BUILD_VERSION: ${{ steps.identity.outputs.version }}
+          BUILD_REVISION: ${{ steps.identity.outputs.revision }}
+          BUILD_TIME: ${{ steps.identity.outputs.published_at }}
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib
+          text = pathlib.Path('CHANGELOG.md').read_text()
+          notes = text.split('## Current main build\n', 1)[1].split('\n## ', 1)[0].strip()
+          if not notes or len(notes.encode()) > 24000:
+              raise SystemExit('Provide concise release notes in CHANGELOG.md')
+          manifest = dict(version=os.environ['BUILD_VERSION'], revision=os.environ['BUILD_REVISION'],
+                          publishedAt=os.environ['BUILD_TIME'], notes=notes,
+                          notesUrl=f"https://github.com/astraldeath/quire-server/blob/{os.environ['BUILD_REVISION']}/CHANGELOG.md")
+          pathlib.Path('update.json').write_text(json.dumps(manifest))
+          pathlib.Path('release-notes.md').write_text('Latest main container build. Update the container manually after reviewing these notes.\n\n' + notes)
+          PY
+          if gh release view server-latest >/dev/null 2>&1; then
+            gh api --method PATCH "repos/$GH_REPO/git/refs/tags/server-latest" -f sha="$BUILD_REVISION" -F force=true
+            gh release edit server-latest --prerelease --latest=false --title "Latest server build" --notes-file release-notes.md
+          else
+            gh release create server-latest --target "$BUILD_REVISION" --prerelease --latest=false --title "Latest server build" --notes-file release-notes.md
+          fi
+          gh release upload server-latest update.json --clobber

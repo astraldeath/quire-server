@@ -1,5 +1,13 @@
 # API and synchronization
 
+## Build and update information
+
+`GET /v1/updates` requires a signed-in session and returns `{ current: { version, revision, readerRevision }, latest: null | { version, revision, publishedAt, notes, notesUrl }, available, checkedAt, canManage, error? }`. All timestamps are RFC3339 strings; `checkedAt` is empty until a successful check. `canManage` is true only for administrators. This is read-only; there is no installation endpoint.
+
+`available` is true only when the published revision differs and its source timestamp is newer than the installed build. Unknown local build identity returns an explanatory `error` and `available: false`; clients must not present that as up to date. Upstream failure also returns HTTP 200 with `error`, retaining the last successful `latest` and `checkedAt` if present. Clients should indicate stale results when `error` is present. The server shares a six-hour cache across accounts. Treat `notes` as plain text; `notesUrl` is restricted to this project's HTTPS GitHub URLs. Older servers return 404 for this endpoint.
+
+## Synchronization
+
 The reusable contract is [api/openapi.json](../api/openapi.json), licensed separately under MIT. Server implementation is AGPL-3.0-only; see [LICENSE](../LICENSE). Contract code can be generated for the MIT reader without copying server implementation.
 
 - `POST /v1/sessions`: username, password, deviceName; returns a bearer token once.

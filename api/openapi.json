@@ -10,6 +10,53 @@
     "description": "Private reading-data sync and EPUB storage. Account and watched-folder administration are owner CLI operations."
   },
   "paths": {
+    "/v1/updates": {
+      "get": {
+        "security": [{"bearerAuth": []}],
+        "summary": "Installed build and cached published update information",
+        "description": "Signed-in users may read; canManage identifies administrators. Unknown builds and failed checks return an error string without blocking other server features. checkedAt is the last successful check, or empty. There is no installation endpoint.",
+        "responses": {
+          "200": {
+            "description": "Update information, possibly stale or unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["current", "latest", "available", "checkedAt", "canManage"],
+                  "properties": {
+                    "current": {
+                      "type": "object",
+                      "required": ["version", "revision", "readerRevision"],
+                      "properties": {
+                        "version": {"type": "string"},
+                        "revision": {"type": "string"},
+                        "readerRevision": {"type": "string"}
+                      }
+                    },
+                    "latest": {
+                      "type": ["object", "null"],
+                      "required": ["version", "revision", "publishedAt", "notes", "notesUrl"],
+                      "properties": {
+                        "version": {"type": "string"},
+                        "revision": {"type": "string"},
+                        "publishedAt": {"type": "string", "format": "date-time"},
+                        "notes": {"type": "string"},
+                        "notesUrl": {"type": "string", "format": "uri"}
+                      }
+                    },
+                    "available": {"type": "boolean"},
+                    "checkedAt": {"type": "string"},
+                    "canManage": {"type": "boolean"},
+                    "error": {"type": "string"}
+                  }
+                }
+              }
+            }
+          },
+          "401": {"description": "Authentication required"}
+        }
+      }
+    },
     "/healthz": {
       "get": {
         "summary": "Database readiness",
