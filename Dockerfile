@@ -1,6 +1,6 @@
 FROM --platform=$BUILDPLATFORM node:24-alpine AS reader
 RUN apk add --no-cache git ca-certificates
-ARG QUIRE_READER_REF=381d5a033c206c3c11d51de9184d168fef990522
+ARG QUIRE_READER_REF=7d06ac0a8ce5a4d27dd1ecda3ad761cfcfcb5dbd
 RUN git clone https://github.com/astraldeath/quire.git /reader \
     && cd /reader && git checkout --detach "$QUIRE_READER_REF" \
     && git rev-parse HEAD > /reader-revision
