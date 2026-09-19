@@ -67,4 +67,4 @@ Format Go changes with `gofmt`. Tests use isolated temporary databases. Use incr
 
 The server is licensed under [AGPL-3.0-only](LICENSE). The API contract is separately licensed under MIT, allowing the [MIT reader](https://github.com/astraldeath/quire) to generate client code without copying server implementation.
 
-Supported files: EPUB, CBZ, FB2/FBZ, and DRM-free MOBI/AZW3 (128 MiB maximum). Downloads and backups preserve the original file format. Watched directories seed nested library folders; later user organization is preserved. Folder assignments sync with book metadata.
+Supported files: EPUB, PDF, CBZ, FB2/FBZ, and DRM-free MOBI/AZW3 (128 MiB maximum). Downloads and backups preserve the original file format. Watched directories seed nested library folders; later user organization is preserved. Folder assignments sync with book metadata.
