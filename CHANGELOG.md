@@ -4,6 +4,9 @@ This file describes user-visible changes included in the current main container 
 
 ## Current main build
 
+- Detect chapters in books with underscore-separated titles, recap entries, and isolated numbering errors.
+- Count completed chapters when reading past a short final page.
+
 - Include reader v0.6.0 with PDF reading and the local-only book indicator.
 - Accept PDF files in uploads, watched libraries, downloads, and backups.
 - Track the current chapter (for example chapter 9) separately from completed chapters used for statistics. Update the container to enable current-chapter sync across devices.
