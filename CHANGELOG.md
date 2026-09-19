@@ -4,6 +4,8 @@ This file describes user-visible changes included in the current main container 
 
 ## Current main build
 
+- Show unresolved sync conflicts directly in the library with a review action.
+
 - Detect chapters in books with underscore-separated titles, recap entries, and isolated numbering errors.
 - Count completed chapters when reading past a short final page.
 
