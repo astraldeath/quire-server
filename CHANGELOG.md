@@ -4,6 +4,12 @@ This file describes user-visible changes included in the current main container 
 
 ## Current main build
 
+- Include reader v0.6.0 with PDF reading and the local-only book indicator.
+- Accept PDF files in uploads, watched libraries, downloads, and backups.
+- Track the current chapter (for example chapter 9) separately from completed chapters used for statistics. Update the container to enable current-chapter sync across devices.
+
+## Previous build
+
 - Signed-in readers can see the installed server version, published changes, and whether a newer server build is available.
 - Administrators receive instructions for updating their Docker deployment. Updates remain an explicit operator action.
 - Update checks retain the last successful result when GitHub is unavailable and identify local development builds as unknown.
