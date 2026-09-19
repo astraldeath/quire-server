@@ -1980,6 +1980,12 @@
             "maximum": 100000,
             "description": "Optional completed chapter number from a validated numbered table of contents."
           },
+          "currentChapter": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100000,
+            "description": "Optional current chapter number at the saved reading location, used for external chapter tracking."
+          },
           "section": {
             "type": "string",
             "maxLength": 2048

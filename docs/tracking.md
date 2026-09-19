@@ -40,8 +40,10 @@ is no unattended server scheduler yet.
 Starting a book can change `plan_to_read` or `considering` to `reading`. At >=99.9%
 (displayed as 100%), an explicitly configured volume number can advance external
 volume progress. Completion of the whole external entry is a separate book-only
-option. For links without a volume, the reader can send `completedChapter` from
-validated numbered table-of-contents boundaries; arbitrary EPUB sections are not
+option. For links without a volume, the reader sends `currentChapter` from
+validated numbered table-of-contents boundaries, so opening chapter 9 advances
+external chapter progress to 9. Older positions fall back to `completedChapter`,
+which remains separate for completion statistics. Arbitrary EPUB sections are not
 counted as chapters. The server stores a separate chapter acknowledgement so new
 chapters continue syncing after the initial reading state. MangaBaka accepts up to
 10000 chapters; larger local values remain saved and show a tracking error without
@@ -50,6 +52,10 @@ never lowered; notes, ratings, and other external fields are untouched. New exte
 entries use the privacy choice saved with the link (private by default for legacy
 clients and existing links). Automatic reads do not resume or complete paused or
 dropped entries.
+
+Discovery advertises `current-chapter`. Readers omit the optional `currentChapter`
+field when syncing to older servers, retaining the local value and continuing to
+send `completedChapter` for compatibility.
 
 The tracker editor reads and saves state, chapter/volume progress, rating, start
 and finish dates, and privacy. `GET /v1/tracking/entries/{seriesId}` returns

@@ -161,7 +161,7 @@ func NewConfiguredHandler(store *Store, publicURL, name, setupCode string) http.
 			failure(w, err)
 			return
 		}
-		respond(w, 200, map[string]any{"name": settings.Name, "apiVersion": "1", "apiUrl": strings.TrimRight(publicURL, "/") + "/v1", "registration": "owner-only", "capabilities": []string{"reading-data-sync", "device-sessions", "epub-files", "watched-folders", "multiple-folders"}})
+		respond(w, 200, map[string]any{"name": settings.Name, "apiVersion": "1", "apiUrl": strings.TrimRight(publicURL, "/") + "/v1", "registration": "owner-only", "capabilities": []string{"reading-data-sync", "device-sessions", "epub-files", "watched-folders", "multiple-folders", "current-chapter"}})
 	})
 	mux.HandleFunc("POST /v1/sessions", func(w http.ResponseWriter, r *http.Request) {
 		if !a.allowLogin(r.RemoteAddr) {

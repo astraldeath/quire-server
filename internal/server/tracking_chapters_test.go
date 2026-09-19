@@ -58,6 +58,20 @@ func TestPositionCompletedChapterValidation(t *testing.T) {
 	}
 }
 
+func TestPositionCurrentChapterValidation(t *testing.T) {
+	for _, tc := range []struct {
+		chapter string
+		valid   bool
+	}{
+		{"1", true}, {"9", true}, {"100000", true}, {"0", false}, {"-1", false}, {"1.5", false}, {"100001", false}, {`"9"`, false},
+	} {
+		err := validateOperation(Operation{ID: "chapter", BookID: testBook, Kind: "position", RecordID: "default", Value: json.RawMessage(`{"cfi":"chapter","fraction":0.5,"section":"009—My First Monster","currentChapter":` + tc.chapter + `,"completedChapter":8}`)})
+		if (err == nil) != tc.valid {
+			t.Fatalf("chapter=%s valid=%v error=%v", tc.chapter, tc.valid, err)
+		}
+	}
+}
+
 func TestTrackingChaptersAdvanceAfterReadingAcknowledgement(t *testing.T) {
 	s, h := fixture(t)
 	token := login(t, h, "alice")
@@ -100,7 +114,7 @@ func TestTrackingChaptersAdvanceAfterReadingAcknowledgement(t *testing.T) {
 	var revision int64
 	position := func(chapter int) {
 		t.Helper()
-		out := syncRequest(t, h, token, 0, Operation{ID: randomID(), BookID: id, Kind: "position", RecordID: "default", BaseRevision: revision, Value: json.RawMessage(fmt.Sprintf(`{"cfi":"chapter","fraction":0.5,"completedChapter":%d}`, chapter))})
+		out := syncRequest(t, h, token, 0, Operation{ID: randomID(), BookID: id, Kind: "position", RecordID: "default", BaseRevision: revision, Value: json.RawMessage(fmt.Sprintf(`{"cfi":"chapter","fraction":0.5,"currentChapter":%d,"completedChapter":%d}`, chapter, chapter-1))})
 		for _, r := range out.Changes {
 			if r.Kind == "position" && r.Revision > revision {
 				revision = r.Revision

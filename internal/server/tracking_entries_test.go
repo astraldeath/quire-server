@@ -162,7 +162,7 @@ func TestTrackingManualProgressAcknowledgesAllLinkedBooks(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		raw := `[{"value":{"fraction":1,"completedChapter":9}}]`
+		raw := `[{"value":{"fraction":1,"currentChapter":9,"completedChapter":8}}]`
 		if _, err := s.db.Exec("INSERT INTO records(user_id,book_id,kind,record_id,revision,candidates) VALUES(?,?,'position','default',1,?)", user, id, raw); err != nil {
 			t.Fatal(err)
 		}

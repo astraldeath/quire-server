@@ -232,6 +232,7 @@ func (s *Store) runTracking(ctx context.Context, user string, p *trackingProvide
 		var pos struct {
 			Fraction         float64 `json:"fraction"`
 			CompletedChapter int     `json:"completedChapter"`
+			CurrentChapter   *int    `json:"currentChapter"`
 		}
 		if json.Unmarshal(candidates[0].Value, &pos) != nil {
 			continue
@@ -244,8 +245,12 @@ func (s *Store) runTracking(ctx context.Context, user string, p *trackingProvide
 			step = 2
 		}
 		chapter := 0
-		if l.Volume == 0 && pos.CompletedChapter > 0 && pos.CompletedChapter <= 100000 {
-			chapter = pos.CompletedChapter
+		detectedChapter := pos.CompletedChapter
+		if pos.CurrentChapter != nil {
+			detectedChapter = *pos.CurrentChapter
+		}
+		if l.Volume == 0 && detectedChapter > 0 && detectedChapter <= 100000 {
+			chapter = detectedChapter
 		}
 		if step <= l.LastStep && chapter <= l.LastChapter {
 			continue

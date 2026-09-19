@@ -125,6 +125,7 @@ func (s *Store) trackingEntryAcknowledgements(user string, seriesID int64) ([]tr
 		var pos struct {
 			Fraction         float64
 			CompletedChapter int
+			CurrentChapter   *int
 		}
 		if json.Unmarshal(candidates[0].Value, &pos) != nil {
 			continue
@@ -136,8 +137,12 @@ func (s *Store) trackingEntryAcknowledgements(user string, seriesID int64) ([]tr
 		if pos.Fraction >= 0.999 {
 			ack.step = 2
 		}
-		if volume == 0 && pos.CompletedChapter > 0 && pos.CompletedChapter <= 100000 {
-			ack.chapter = pos.CompletedChapter
+		detectedChapter := pos.CompletedChapter
+		if pos.CurrentChapter != nil {
+			detectedChapter = *pos.CurrentChapter
+		}
+		if volume == 0 && detectedChapter > 0 && detectedChapter <= 100000 {
+			ack.chapter = detectedChapter
 		}
 		result = append(result, ack)
 	}
