@@ -13,7 +13,9 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode"
 
@@ -21,7 +23,7 @@ import (
 	_ "golang.org/x/image/webp"
 )
 
-var bookFormats = []string{"epub", "cbz", "fb2", "fbz", "mobi", "azw3"}
+var bookFormats = []string{"epub", "cbz", "fb2", "fbz", "mobi", "azw3", "pdf"}
 
 func validBookFormat(format string) bool {
 	for _, f := range bookFormats {
@@ -33,6 +35,8 @@ func validBookFormat(format string) bool {
 }
 func bookMIME(format string) string {
 	switch format {
+	case "pdf":
+		return "application/pdf"
 	case "epub":
 		return "application/epub+zip"
 	case "cbz":
@@ -224,6 +228,12 @@ func detectBookFormat(filename string) (string, error) {
 	defer f.Close()
 	head := make([]byte, 78)
 	n, _ := io.ReadFull(f, head)
+	if n >= 8 && bytes.HasPrefix(head[:n], []byte("%PDF-")) {
+		if validatePDF(f, head[:n]) != nil {
+			return "", ErrInvalid
+		}
+		return "pdf", nil
+	}
 	if n == 78 && string(head[60:68]) == "BOOKMOBI" {
 		return validateMOBI(f, head)
 	}
@@ -236,6 +246,53 @@ func detectBookFormat(filename string) (string, error) {
 	}
 	return "fb2", nil
 }
+
+// PDF inspection checks the bounded file envelope and cross-reference target.
+// It does not render, decompress streams, execute actions, or validate every object.
+var pdfVersion = regexp.MustCompile(`^%PDF-(1\.[0-7]|2\.0)[\r\n]`)
+var pdfTrailer = regexp.MustCompile(`startxref[\x00\t\n\f\r ]+([0-9]+)[\x00\t\n\f\r ]+%%EOF[\x00\t\n\f\r ]*$`)
+var pdfXRefStream = regexp.MustCompile(`^[0-9]+\s+[0-9]+\s+obj\s*<<`)
+var pdfXRefType = regexp.MustCompile(`/Type\s*/XRef\b`)
+
+func validatePDF(f *os.File, head []byte) error {
+	if !pdfVersion.Match(head) {
+		return ErrInvalid
+	}
+	info, err := f.Stat()
+	if err != nil || info.Size() < 20 {
+		return ErrInvalid
+	}
+	size := info.Size()
+	tailSize := min(size, int64(4096))
+	tail := make([]byte, tailSize)
+	if _, err = f.ReadAt(tail, size-tailSize); err != nil {
+		return ErrInvalid
+	}
+	trailer := pdfTrailer.FindSubmatch(tail)
+	if trailer == nil {
+		return ErrInvalid
+	}
+	offset, err := strconv.ParseInt(string(trailer[1]), 10, 64)
+	if err != nil || offset < 9 || offset >= size-tailSize+int64(bytes.LastIndex(tail, []byte("startxref"))) {
+		return ErrInvalid
+	}
+	target := make([]byte, min(int64(4096), size-offset))
+	if _, err = f.ReadAt(target, offset); err != nil {
+		return ErrInvalid
+	}
+	if bytes.HasPrefix(target, []byte("xref")) && len(target) > 4 && bytes.ContainsAny(target[4:5], "\r\n \t") {
+		return nil
+	}
+	// Stream dictionaries precede binary data; limit inspection to that dictionary.
+	if end := bytes.Index(target, []byte("stream")); end >= 0 {
+		target = target[:end]
+	}
+	if pdfXRefStream.Match(target) && pdfXRefType.Match(target) {
+		return nil
+	}
+	return ErrInvalid
+}
+
 func validateFB2(b []byte) error {
 	d := xml.NewDecoder(bytes.NewReader(b))
 	depth, roots := 0, 0

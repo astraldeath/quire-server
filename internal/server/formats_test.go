@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"fmt"
 	"image"
 	"image/png"
 	"net/http/httptest"
@@ -26,7 +27,7 @@ func formatFixtures() map[string][]byte {
 		return b.Bytes()
 	}
 	fb2 := []byte(`<?xml version="1.0"?><FictionBook xmlns="http://www.gribuser.ru/xml/fictionbook/2.0"><description><title-info><book-title>Example</book-title><author><first-name>Ada</first-name><last-name>Lovelace</last-name></author></title-info></description><body><section><p>Hello</p></section></body></FictionBook>`)
-	return map[string][]byte{"epub": epubBytes(), "cbz": archive("001.png", img.Bytes()), "fb2": fb2, "fbz": archive("book.fb2", fb2), "mobi": mobiFixture(6), "azw3": mobiFixture(8)}
+	return map[string][]byte{"pdf": pdfFixture(), "epub": epubBytes(), "cbz": archive("001.png", img.Bytes()), "fb2": fb2, "fbz": archive("book.fb2", fb2), "mobi": mobiFixture(6), "azw3": mobiFixture(8)}
 }
 
 func mobiFixture(version uint32) []byte {
@@ -155,6 +156,9 @@ func TestFormatsUploadDownloadBackup(t *testing.T) {
 			if w.Code != 200 || !bytes.Equal(w.Body.Bytes(), data) {
 				t.Fatal("original file changed")
 			}
+			if w.Header().Get("Content-Type") != bookMIME(format) {
+				t.Fatal(w.Header())
+			}
 			if w.Header().Get("Content-Disposition") != `attachment; filename="book.`+format+`"` {
 				t.Fatal(w.Header())
 			}
@@ -217,5 +221,48 @@ func TestBookFolderAndFormatValidation(t *testing.T) {
 		if validateOperation(Operation{ID: "test", BookID: hashBook(nil), Kind: "book", RecordID: "default", Value: value}) == nil {
 			t.Fatalf("accepted %q", folder)
 		}
+	}
+}
+
+func pdfFixture() []byte {
+	var b bytes.Buffer
+	b.WriteString("%PDF-1.7\n")
+	offsets := []int{0}
+	for _, object := range []string{"<< /Type /Catalog /Pages 2 0 R >>", "<< /Type /Pages /Kids [3 0 R] /Count 1 >>", "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 100 100] >>"} {
+		offsets = append(offsets, b.Len())
+		fmt.Fprintf(&b, "%d 0 obj\n%s\nendobj\n", len(offsets)-1, object)
+	}
+	xref := b.Len()
+	b.WriteString("xref\n0 4\n0000000000 65535 f \n")
+	for _, offset := range offsets[1:] {
+		fmt.Fprintf(&b, "%010d 00000 n \n", offset)
+	}
+	fmt.Fprintf(&b, "trailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n", xref)
+	return b.Bytes()
+}
+
+func TestPDFEnvelopeValidation(t *testing.T) {
+	good := pdfFixture()
+	for name, data := range map[string][]byte{
+		"truncated":      good[:len(good)-8],
+		"signature only": []byte("%PDF-1.7\nnot a PDF\n%%EOF\n"),
+		"bad version":    bytes.Replace(good, []byte("%PDF-1.7"), []byte("%PDF-9.9"), 1),
+		"bad xref":       []byte("%PDF-1.7\nstartxref\n9999999999999999999999\n%%EOF\n"),
+		"wrong target":   []byte("%PDF-1.7\nnot xref\nstartxref\n9\n%%EOF\n"),
+	} {
+		t.Run(name, func(t *testing.T) {
+			filename := filepath.Join(t.TempDir(), "book.pdf")
+			os.WriteFile(filename, data, 0600)
+			if _, err := detectBookFormat(filename); err == nil {
+				t.Fatal("accepted invalid PDF")
+			}
+		})
+	}
+	// Cross-reference streams are used by modern and compressed PDFs.
+	data := []byte("%PDF-2.0\n1 0 obj\n<< /Type /XRef /Size 1 /W [1 2 1] /Length 4 >>\nstream\n0000\nendstream\nendobj\nstartxref\n9\n%%EOF\n")
+	filename := filepath.Join(t.TempDir(), "unknown-extension")
+	os.WriteFile(filename, data, 0600)
+	if format, err := detectBookFormat(filename); err != nil || format != "pdf" {
+		t.Fatal(format, err)
 	}
 }

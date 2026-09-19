@@ -21,7 +21,7 @@ import (
 const backupFormat = 1
 const maxRestoreBytes int64 = 100 << 30
 
-var objectName = regexp.MustCompile(`^objects/[a-f0-9]{64}/[a-f0-9]{64}\.(epub|cbz|fb2|fbz|mobi|azw3)$`)
+var objectName = regexp.MustCompile(`^objects/[a-f0-9]{64}/[a-f0-9]{64}\.(epub|cbz|fb2|fbz|mobi|azw3|pdf)$`)
 
 type backupEntry struct {
 	Size   int64  `json:"size"`
