@@ -473,7 +473,14 @@ func seedBook(tx *sql.Tx, user, book, title string, metadata bookMetadata, folde
 	if len(folders) > 0 && folders[0] != "" {
 		fields["folder"] = folders[0]
 	}
+	if metadata.Folders != nil && validFolders(metadata.Folders) {
+		fields["folders"] = metadata.Folders
+	}
+	if len(folders) > 0 {
+		delete(fields, "folders")
+	}
 	value, _ := json.Marshal(fields)
+	value = canonicalBookFolders(value, nil)
 	if raw != "" {
 		var old []Candidate
 		if json.Unmarshal([]byte(raw), &old) == nil && len(old) == 1 && string(old[0].Value) == string(value) {

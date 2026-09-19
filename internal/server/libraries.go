@@ -103,7 +103,7 @@ func (a *api) libraryRoutes(mux *http.ServeMux) {
 					_ = json.Unmarshal(c[0].Value, &m)
 				}
 			}
-			out = append(out, map[string]any{"id": f.BookID, "title": m.Title, "author": m.Author, "series": m.Series, "volume": m.Volume, "format": m.Format, "folder": m.Folder, "uploaded": f.Uploaded, "watched": f.Watched})
+			out = append(out, map[string]any{"id": f.BookID, "title": m.Title, "author": m.Author, "series": m.Series, "volume": m.Volume, "format": m.Format, "folder": m.Folder, "folders": metadataFolders(m.Folder, m.Folders), "uploaded": f.Uploaded, "watched": f.Watched})
 		}
 		respond(w, 200, out)
 	})

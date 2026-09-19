@@ -95,12 +95,13 @@ func validateOperation(op Operation) error {
 	switch op.Kind {
 	case "book":
 		var v struct {
-			Title  string   `json:"title"`
-			Format string   `json:"format"`
-			Folder string   `json:"folder"`
-			Author string   `json:"author"`
-			Series string   `json:"series"`
-			Volume *float64 `json:"volume"`
+			Title   string   `json:"title"`
+			Format  string   `json:"format"`
+			Folder  string   `json:"folder"`
+			Folders []string `json:"folders"`
+			Author  string   `json:"author"`
+			Series  string   `json:"series"`
+			Volume  *float64 `json:"volume"`
 		}
 		if strictJSON(op.Value, &v) != nil || v.Title == "" || len(v.Title) > 2048 || len(v.Author) > 2048 || len(v.Series) > 2048 || !validFolder(v.Folder) || (v.Format != "" && !validBookFormat(v.Format)) {
 			return ErrInvalid
@@ -113,6 +114,18 @@ func validateOperation(op Operation) error {
 		}
 		if fields["format"] != nil && !validBookFormat(v.Format) {
 			return ErrInvalid
+		}
+		if raw, present := fields["folders"]; present {
+			if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) || !validFolders(v.Folders) {
+				return ErrInvalid
+			}
+			primary := ""
+			if len(v.Folders) > 0 {
+				primary = v.Folders[0]
+			}
+			if fields["folder"] != nil && v.Folder != primary {
+				return ErrInvalid
+			}
 		}
 		for _, field := range []string{"folder", "format"} {
 			if bytes.Equal(bytes.TrimSpace(fields[field]), []byte("null")) {
@@ -209,17 +222,19 @@ func (s *Store) Sync(ctx context.Context, user string, req SyncRequest) (SyncRes
 			return SyncResponse{}, ErrConflict
 		}
 		conflict := op.BaseRevision != record.Revision
-		// Older clients send the original metadata shape. Missing optional fields
-		// preserve the current value; an explicit empty folder moves to the root.
-		if !conflict && op.Kind == "book" && !op.Deleted && len(record.Candidates) == 1 && !record.Candidates[0].Deleted {
-			var incoming, previous map[string]json.RawMessage
-			if json.Unmarshal(op.Value, &incoming) == nil && json.Unmarshal(record.Candidates[0].Value, &previous) == nil {
-				for _, field := range []string{"folder", "format"} {
-					if _, present := incoming[field]; !present && previous[field] != nil {
-						incoming[field] = previous[field]
-					}
-				}
-				op.Value, _ = json.Marshal(incoming)
+		// Hash the original operation above; canonicalization must not change replay identity.
+		if op.Kind == "book" && !op.Deleted {
+			var previous json.RawMessage
+			if !conflict && len(record.Candidates) == 1 && !record.Candidates[0].Deleted {
+				previous = record.Candidates[0].Value
+			}
+			var incoming map[string]json.RawMessage
+			_ = json.Unmarshal(op.Value, &incoming)
+			// A stale legacy candidate expresses only a primary-folder edit (or
+			// no folder edit). Do not turn that into an authoritative array:
+			// a resolver must retain the other candidate's extra memberships.
+			if !conflict || incoming["folders"] != nil {
+				op.Value = canonicalBookFolders(op.Value, previous)
 			}
 		}
 		if !conflict {
