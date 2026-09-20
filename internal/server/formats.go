@@ -142,8 +142,8 @@ func readMember(f *zip.File, limit int64) ([]byte, error) {
 	}
 	return b, nil
 }
-func validateArchive(z *zip.ReadCloser) error {
-	if len(z.File) > 10000 {
+func validateArchive(z *zip.ReadCloser, storedBytes int64) error {
+	if storedBytes < 0 || storedBytes > MaxStoredBookBytes || len(z.File) > 10000 {
 		return ErrInvalid
 	}
 	var total uint64
@@ -154,7 +154,9 @@ func validateArchive(z *zip.ReadCloser) error {
 			return ErrInvalid
 		}
 		seen[f.Name] = true
-		if f.UncompressedSize64 > 512<<20-total {
+		// Expansion may add at most 512 MiB to the bounded stored archive.
+		// This allows large stored comics without permitting compressed bombs.
+		if f.UncompressedSize64 > uint64(storedBytes)+(512<<20)-total {
 			return ErrInvalid
 		}
 		total += f.UncompressedSize64
@@ -164,9 +166,16 @@ func validateArchive(z *zip.ReadCloser) error {
 
 // Detection is based on bounded content inspection, independent of caller MIME or extension.
 func detectBookFormat(filename string) (string, error) {
+	info, err := os.Stat(filename)
+	if err != nil {
+		return "", err
+	}
+	if !info.Mode().IsRegular() || info.Size() < 0 || info.Size() > MaxStoredBookBytes {
+		return "", ErrInvalid
+	}
 	if z, err := zip.OpenReader(filename); err == nil {
 		defer z.Close()
-		if validateArchive(z) != nil {
+		if validateArchive(z, info.Size()) != nil {
 			return "", ErrInvalid
 		}
 		hasEPUB, fb2Count, images := false, 0, 0

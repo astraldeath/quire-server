@@ -19,6 +19,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"quire.local/server/internal/server"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -94,11 +95,28 @@ func run(args []string) error {
 	}
 	flags := flag.NewFlagSet(command, flag.ContinueOnError)
 	data := flags.String("data", env("QUIRE_DATA", "./data"), "persistent data directory")
+	limitDefault, supplied := os.LookupEnv("QUIRE_MAX_UPLOAD_BYTES")
+	if !supplied {
+		limitDefault = strconv.FormatInt(server.DefaultMaxUploadBytes, 10)
+	}
+	maxUpload := flags.String("max-upload-bytes", limitDefault, "maximum uploaded or watched book bytes (1..8589934592)")
+	var options server.StoreOptions
+	parseFlags := func() error {
+		if err := flags.Parse(args); err != nil {
+			return err
+		}
+		limit, err := strconv.ParseInt(*maxUpload, 10, 64)
+		if err != nil || limit < 1 || limit > server.MaxStoredBookBytes {
+			return errors.New("max-upload-bytes / QUIRE_MAX_UPLOAD_BYTES must be an integer between 1 and 8589934592")
+		}
+		options.MaxUploadBytes = limit
+		return nil
+	}
 
 	if command == "backup" || command == "restore" {
 		output := flags.String("output", "", "new backup archive filename")
 		input := flags.String("input", "", "server backup archive to restore")
-		if err := flags.Parse(args); err != nil {
+		if err := parseFlags(); err != nil {
 			return err
 		}
 		if flags.NArg() != 0 {
@@ -121,7 +139,7 @@ func run(args []string) error {
 		if _, err := os.Stat(database); err != nil {
 			return err
 		}
-		store, err := server.Open(database)
+		store, err := server.OpenWithOptions(database, options)
 		if err != nil {
 			return err
 		}
@@ -136,13 +154,13 @@ func run(args []string) error {
 		username := flags.String("username", "", "owner of the watched library")
 		root := flags.String("path", "", "read-only EPUB folder")
 		idFlag := flags.String("id", "", "watched folder ID")
-		if err := flags.Parse(args); err != nil {
+		if err := parseFlags(); err != nil {
 			return err
 		}
 		if flags.NArg() != 0 {
 			return errors.New("unexpected arguments")
 		}
-		store, err := server.Open(filepath.Join(*data, "quire.db"))
+		store, err := server.OpenWithOptions(filepath.Join(*data, "quire.db"), options)
 		if err != nil {
 			return err
 		}
@@ -172,13 +190,13 @@ func run(args []string) error {
 	}
 	if command == "admin-promote" {
 		username := flags.String("username", "", "existing account to promote")
-		if err := flags.Parse(args); err != nil {
+		if err := parseFlags(); err != nil {
 			return err
 		}
 		if *username == "" || flags.NArg() != 0 {
 			return errors.New("-username is required")
 		}
-		store, err := server.Open(filepath.Join(*data, "quire.db"))
+		store, err := server.OpenWithOptions(filepath.Join(*data, "quire.db"), options)
 		if err != nil {
 			return err
 		}
@@ -188,7 +206,7 @@ func run(args []string) error {
 	if command != "serve" {
 		username := flags.String("username", "", "account name (lowercase letters, digits, dot, dash, underscore)")
 		passwordFile := flags.String("password-file", "", "read password from a protected file instead of prompting")
-		if err := flags.Parse(args); err != nil {
+		if err := parseFlags(); err != nil {
 			return err
 		}
 		if flags.NArg() != 0 {
@@ -201,7 +219,7 @@ func run(args []string) error {
 		if err != nil {
 			return err
 		}
-		store, err := server.Open(filepath.Join(*data, "quire.db"))
+		store, err := server.OpenWithOptions(filepath.Join(*data, "quire.db"), options)
 		if err != nil {
 			return err
 		}
@@ -222,7 +240,7 @@ func run(args []string) error {
 	name := flags.String("name", env("QUIRE_NAME", "Quire"), "server display name")
 	origins := flags.String("allowed-origins", env("QUIRE_ALLOWED_ORIGINS", ""), "comma-separated browser origins; empty disables browser access")
 	scanInterval := flags.Duration("scan-interval", 5*time.Minute, "watched-folder scan interval; 0 disables background scans")
-	if err := flags.Parse(args); err != nil {
+	if err := parseFlags(); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 {
@@ -231,7 +249,7 @@ func run(args []string) error {
 	if err := validateURL(*publicURL); err != nil {
 		return err
 	}
-	store, err := server.Open(filepath.Join(*data, "quire.db"))
+	store, err := server.OpenWithOptions(filepath.Join(*data, "quire.db"), options)
 	if err != nil {
 		return err
 	}

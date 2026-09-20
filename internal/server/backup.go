@@ -127,7 +127,7 @@ func (s *Store) Backup(ctx context.Context, destination string) (err error) {
 		if name == "quire.db" && info.Size() > 1<<30 {
 			return errors.New("database exceeds 1 GiB format limit")
 		}
-		if name != "quire.db" && info.Size() > maxBookBytes {
+		if name != "quire.db" && info.Size() > MaxStoredBookBytes {
 			return ErrInvalid
 		}
 		f, e := os.Open(source)
@@ -221,7 +221,7 @@ func RestoreBackup(archive, destination string) error {
 		if !archiveName(name) || f == nil || expected.Size < 0 || uint64(expected.Size) != f.UncompressedSize64 || len(expected.SHA256) != 64 {
 			return errors.New("backup inventory mismatch")
 		}
-		if name != "quire.db" && expected.Size > maxBookBytes {
+		if name != "quire.db" && expected.Size > MaxStoredBookBytes {
 			return ErrInvalid
 		}
 		if name == "quire.db" && expected.Size > 1<<30 {

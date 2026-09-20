@@ -11,15 +11,23 @@ import (
 )
 
 type Store struct {
-	db         *sql.DB
-	data       string
-	fileMu     sync.Mutex
-	backupMu   sync.Mutex
-	trackingMu sync.Mutex
-	metadata   *metadataCache
+	maxUploadBytes int64
+	db             *sql.DB
+	data           string
+	fileMu         sync.Mutex
+	backupMu       sync.Mutex
+	trackingMu     sync.Mutex
+	metadata       *metadataCache
 }
 
 func Open(path string) (*Store, error) {
+	return OpenWithOptions(path, StoreOptions{MaxUploadBytes: DefaultMaxUploadBytes})
+}
+
+func OpenWithOptions(path string, options StoreOptions) (*Store, error) {
+	if err := options.validate(); err != nil {
+		return nil, err
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return nil, err
 	}
@@ -138,6 +146,6 @@ PRAGMA user_version=7;COMMIT;`)
 			return fail(err)
 		}
 	}
-	return &Store{db: db, data: filepath.Dir(path), metadata: newMetadataCache(128, 16<<20, formatMetadata)}, nil
+	return &Store{maxUploadBytes: options.MaxUploadBytes, db: db, data: filepath.Dir(path), metadata: newMetadataCache(128, 16<<20, formatMetadata)}, nil
 }
 func (s *Store) Close() error { return s.db.Close() }

@@ -79,6 +79,17 @@ func (s *Store) sharedSeeds(user string) error {
 }
 func (a *api) libraryRoutes(mux *http.ServeMux) {
 	a.libraryManagementRoutes(mux)
+	mux.HandleFunc("POST /v1/admin/libraries/{library}/books", func(w http.ResponseWriter, r *http.Request) {
+		if a.admin(w, r) == "" {
+			return
+		}
+		var owner string
+		if err := a.store.db.QueryRow("SELECT owner FROM libraries WHERE id=?", r.PathValue("library")).Scan(&owner); err != nil {
+			failure(w, err)
+			return
+		}
+		a.uploadFile(w, r, owner, "")
+	})
 	mux.HandleFunc("GET /v1/admin/libraries/{library}/books", func(w http.ResponseWriter, r *http.Request) {
 		if a.admin(w, r) == "" {
 			return
@@ -348,17 +359,7 @@ func (a *api) libraryRoutes(mux *http.ServeMux) {
 			failure(w, err)
 			return
 		}
-		a.store.fileMu.Lock()
-		defer a.store.fileMu.Unlock()
-		_, size, err := a.store.stage(owner, http.MaxBytesReader(w, r.Body, maxBookBytes+1), id)
-		if err == nil {
-			_, err = a.store.db.Exec("INSERT INTO files VALUES (?,?,'upload','',?) ON CONFLICT(user_id,book_id,kind,source) DO UPDATE SET size=excluded.size", owner, id, size)
-		}
-		if err != nil {
-			failure(w, err)
-			return
-		}
-		respond(w, 201, map[string]string{"bookId": id})
+		a.uploadFile(w, r, owner, id)
 	})
 	mux.HandleFunc("DELETE /v1/admin/libraries/{library}/books/{id}", func(w http.ResponseWriter, r *http.Request) {
 		if a.admin(w, r) == "" {

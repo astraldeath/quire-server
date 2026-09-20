@@ -17,8 +17,6 @@ import (
 	"time"
 )
 
-const maxBookBytes int64 = 128 << 20
-
 var errWatched = errors.New("watched files cannot be deleted")
 
 type FileInfo struct {
@@ -87,7 +85,10 @@ func (s *Store) stage(user string, r io.Reader, expected string) (string, int64,
 	}
 	defer os.Remove(f.Name())
 	h := sha256.New()
-	n, err := io.Copy(io.MultiWriter(f, h), io.LimitReader(r, maxBookBytes+1))
+	n, err := io.Copy(io.MultiWriter(f, h), io.LimitReader(r, s.maxUploadBytes+1))
+	if n > s.maxUploadBytes {
+		err = ErrUploadTooLarge
+	}
 	if err == nil {
 		err = f.Sync()
 	}
@@ -97,9 +98,6 @@ func (s *Store) stage(user string, r io.Reader, expected string) (string, int64,
 	}
 	if closeErr != nil {
 		return "", 0, closeErr
-	}
-	if n > maxBookBytes {
-		return "", 0, ErrInvalid
 	}
 	id := hex.EncodeToString(h.Sum(nil))
 	if expected != "" && expected != id {
@@ -156,7 +154,40 @@ func (s *Store) deleteUpload(user, id string) error {
 	}
 	return nil
 }
+
+// Both upload APIs use the same streaming, hash, format and persistence checks.
+// The owner is resolved from authentication/library state, never the request body.
+func (a *api) uploadFile(w http.ResponseWriter, r *http.Request, owner, expected string) {
+	if expected == "" && strings.Split(r.Header.Get("Content-Type"), ";")[0] != "application/octet-stream" {
+		respond(w, http.StatusUnsupportedMediaType, map[string]string{"error": "application/octet-stream required"})
+		return
+	}
+	if r.ContentLength > a.store.maxUploadBytes {
+		failure(w, ErrUploadTooLarge)
+		return
+	}
+	a.store.fileMu.Lock()
+	defer a.store.fileMu.Unlock()
+	// stage bounds unknown-length bodies too. No database transaction is held
+	// while receiving or validating the body.
+	id, size, err := a.store.stage(owner, r.Body, expected)
+	if err == nil {
+		_, err = a.store.db.Exec("INSERT INTO files VALUES (?,?,'upload','',?) ON CONFLICT(user_id,book_id,kind,source) DO UPDATE SET size=excluded.size", owner, id, size)
+	}
+	if err != nil {
+		failure(w, err)
+		return
+	}
+	respond(w, http.StatusCreated, map[string]any{"bookId": id, "size": size})
+}
+
 func (a *api) fileRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("POST /v1/books/files", func(w http.ResponseWriter, r *http.Request) {
+		user := a.authorized(w, r)
+		if user != "" {
+			a.uploadFile(w, r, user, "")
+		}
+	})
 	mux.HandleFunc("GET /v1/books/{id}/metadata", func(w http.ResponseWriter, r *http.Request) {
 		user := a.authorized(w, r)
 		if user == "" {
@@ -200,17 +231,7 @@ func (a *api) fileRoutes(mux *http.ServeMux) {
 			failure(w, ErrInvalid)
 			return
 		}
-		a.store.fileMu.Lock()
-		defer a.store.fileMu.Unlock()
-		_, size, err := a.store.stage(user, http.MaxBytesReader(w, r.Body, maxBookBytes+1), id)
-		if err == nil {
-			_, err = a.store.db.Exec("INSERT INTO files VALUES (?,?,'upload','',?) ON CONFLICT(user_id,book_id,kind,source) DO UPDATE SET size=excluded.size", user, id, size)
-		}
-		if err != nil {
-			failure(w, err)
-			return
-		}
-		respond(w, 201, map[string]string{"bookId": id})
+		a.uploadFile(w, r, user, id)
 	})
 	mux.HandleFunc("GET /v1/books/{id}/file", func(w http.ResponseWriter, r *http.Request) {
 		user := a.authorized(w, r)
@@ -359,6 +380,9 @@ func (s *Store) ScanWatch(id string) (scanErr error) {
 		}
 		if !before.Mode().IsRegular() {
 			return ErrInvalid
+		}
+		if before.Size() > s.maxUploadBytes {
+			return ErrUploadTooLarge
 		}
 		f, e := os.Open(path)
 		if e != nil {

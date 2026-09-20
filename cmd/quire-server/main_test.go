@@ -14,3 +14,28 @@ func TestPublicURL(t *testing.T) {
 		}
 	}
 }
+
+func TestUploadLimitStartupConfiguration(t *testing.T) {
+	for _, value := range []string{"", "0", "-1", "8589934593", "9223372036854775808", "nope"} {
+		t.Run("env_"+value, func(t *testing.T) {
+			t.Setenv("QUIRE_MAX_UPLOAD_BYTES", value)
+			if err := run([]string{"watch-list", "-data", t.TempDir()}); err == nil {
+				t.Fatalf("accepted invalid upload limit %q", value)
+			}
+		})
+	}
+}
+
+func TestUploadLimitFlagOverridesEnvironment(t *testing.T) {
+	t.Setenv("QUIRE_MAX_UPLOAD_BYTES", "invalid")
+	for _, value := range []string{"1", "8589934592"} {
+		if err := run([]string{"watch-list", "-data", t.TempDir(), "-max-upload-bytes", value}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, value := range []string{"0", "-1", "8589934593", "9223372036854775808"} {
+		if err := run([]string{"serve", "-data", t.TempDir(), "-max-upload-bytes", value}); err == nil {
+			t.Fatalf("accepted invalid flag %q", value)
+		}
+	}
+}
