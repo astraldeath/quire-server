@@ -23,7 +23,7 @@ import (
 	_ "golang.org/x/image/webp"
 )
 
-var bookFormats = []string{"epub", "cbz", "fb2", "fbz", "mobi", "azw3", "pdf"}
+var bookFormats = []string{"epub", "cbz", "cbr", "cb7", "fb2", "fbz", "mobi", "azw3", "pdf"}
 
 func validBookFormat(format string) bool {
 	for _, f := range bookFormats {
@@ -41,6 +41,10 @@ func bookMIME(format string) string {
 		return "application/epub+zip"
 	case "cbz":
 		return "application/vnd.comicbook+zip"
+	case "cbr":
+		return "application/vnd.comicbook-rar"
+	case "cb7":
+		return "application/x-cb7"
 	case "fb2":
 		return "application/x-fictionbook+xml"
 	case "fbz":
@@ -237,6 +241,21 @@ func detectBookFormat(filename string) (string, error) {
 	defer f.Close()
 	head := make([]byte, 78)
 	n, _ := io.ReadFull(f, head)
+	if n >= 8 {
+		format := ""
+		if bytes.HasPrefix(head[:n], []byte("Rar!\x1a\x07\x00")) || bytes.HasPrefix(head[:n], []byte("Rar!\x1a\x07\x01\x00")) {
+			format = "cbr"
+		}
+		if bytes.HasPrefix(head[:n], []byte{'7', 'z', 0xbc, 0xaf, 0x27, 0x1c}) {
+			format = "cb7"
+		}
+		if format != "" {
+			if _, err := inspectComicArchive(filename, format); err != nil {
+				return "", err
+			}
+			return format, nil
+		}
+	}
 	if n >= 8 && bytes.HasPrefix(head[:n], []byte("%PDF-")) {
 		if validatePDF(f, head[:n]) != nil {
 			return "", ErrInvalid
@@ -555,6 +574,10 @@ func formatMetadata(filename string) bookMetadata {
 		}
 	case "mobi", "azw3":
 		result = mobiMetadata(filename)
+	case "cbr", "cb7":
+		if m, err := inspectComicArchive(filename, format); err == nil {
+			result = m
+		}
 	case "cbz", "fbz":
 		z, err := zip.OpenReader(filename)
 		if err != nil {

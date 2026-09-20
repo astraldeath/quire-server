@@ -27,7 +27,15 @@ func formatFixtures() map[string][]byte {
 		return b.Bytes()
 	}
 	fb2 := []byte(`<?xml version="1.0"?><FictionBook xmlns="http://www.gribuser.ru/xml/fictionbook/2.0"><description><title-info><book-title>Example</book-title><author><first-name>Ada</first-name><last-name>Lovelace</last-name></author></title-info></description><body><section><p>Hello</p></section></body></FictionBook>`)
-	return map[string][]byte{"pdf": pdfFixture(), "epub": epubBytes(), "cbz": archive("001.png", img.Bytes()), "fb2": fb2, "fbz": archive("book.fb2", fb2), "mobi": mobiFixture(6), "azw3": mobiFixture(8)}
+	cbr, err := os.ReadFile("testdata/comics/rar5.cbr")
+	if err != nil {
+		panic(err)
+	}
+	cb7, err := os.ReadFile("testdata/comics/lzma2.cb7")
+	if err != nil {
+		panic(err)
+	}
+	return map[string][]byte{"cbr": cbr, "cb7": cb7, "pdf": pdfFixture(), "epub": epubBytes(), "cbz": archive("001.png", img.Bytes()), "fb2": fb2, "fbz": archive("book.fb2", fb2), "mobi": mobiFixture(6), "azw3": mobiFixture(8)}
 }
 
 func mobiFixture(version uint32) []byte {
@@ -198,7 +206,7 @@ func TestFormatMetadata(t *testing.T) {
 		if (format == "fb2" || format == "fbz") && (meta.Title != "Example" || meta.Author != "Ada Lovelace") {
 			t.Fatal(meta)
 		}
-		if format == "cbz" && meta.Cover == "" {
+		if (format == "cbz" || format == "cbr" || format == "cb7") && meta.Cover == "" {
 			t.Fatal("missing comic thumbnail")
 		}
 	}
