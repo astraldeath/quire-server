@@ -27,7 +27,7 @@ func WebUI(api http.Handler, directory string) http.Handler {
 			return
 		}
 		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://cdn.mangabaka.dev; font-src 'self' data: blob:; frame-src 'self' blob:; connect-src 'self' blob: https://en.wiktionary.org; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://cdn.mangabaka.dev; font-src 'self' data: blob:; frame-src 'self' blob:; connect-src 'self' blob: https://en.wiktionary.org; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'")
 		w.Header().Set("Cache-Control", "no-cache")
 		if r.URL.Path == "/" || r.URL.Path == "/index.html" || webRoute.MatchString(r.URL.EscapedPath()) {
 			http.ServeFile(w, r, filepath.Join(directory, "index.html"))

@@ -28,3 +28,14 @@ func TestWebRouteDeepLinksAndPrivatePaths(t *testing.T) {
 		}
 	}
 }
+
+func TestWebPolicySupportsArchiveWorkers(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "index.html"), []byte("quire-app"), 0600)
+	w := httptest.NewRecorder()
+	WebUI(http.NotFoundHandler(), dir).ServeHTTP(w, httptest.NewRequest("GET", "/library", nil))
+	policy := w.Header().Get("Content-Security-Policy")
+	if !strings.Contains(policy, "script-src 'self' 'wasm-unsafe-eval'") || !strings.Contains(policy, "worker-src 'self'") {
+		t.Fatalf("archive worker policy unavailable: %s", policy)
+	}
+}
