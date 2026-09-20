@@ -80,6 +80,10 @@ type backupStatus struct {
 func boolPointer(value bool) *bool { return &value }
 
 func (s *Store) backupStatus(ctx context.Context) (backupStatus, error) {
+	return s.backupStatusWithOpen(ctx, os.Open)
+}
+
+func (s *Store) backupStatusWithOpen(ctx context.Context, open func(string) (*os.File, error)) (backupStatus, error) {
 	s.fileMu.Lock()
 	defer s.fileMu.Unlock()
 	status := backupStatus{BrowserLimitBytes: browserBackupLimitBytes}
@@ -107,7 +111,7 @@ func (s *Store) backupStatus(ctx context.Context) (backupStatus, error) {
 			unavailable = true
 			continue
 		}
-		f, openErr := os.Open(path)
+		f, openErr := open(path)
 		if openErr != nil {
 			unavailable = true
 			continue

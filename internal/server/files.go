@@ -381,8 +381,15 @@ func (s *Store) ScanWatch(id string) (scanErr error) {
 			imported = 0
 			existing = 0
 		}
-		details, _ := json.Marshal(diagnostics.files)
-		_, _ = s.db.Exec("INSERT INTO scan_status(watch_id,last_at,error,imported,existing,skipped,skipped_files,omitted_skipped_files) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(watch_id) DO UPDATE SET last_at=excluded.last_at,error=excluded.error,imported=excluded.imported,existing=excluded.existing,skipped=excluded.skipped,skipped_files=excluded.skipped_files,omitted_skipped_files=excluded.omitted_skipped_files", id, time.Now().Unix(), message, imported, existing, diagnostics.skipped, string(details), diagnostics.omitted)
+		details, err := json.Marshal(diagnostics.files)
+		if err != nil {
+			scanErr = errors.Join(scanErr, fmt.Errorf("encode scan diagnostics: %w", err))
+			return
+		}
+		_, err = s.db.Exec("INSERT INTO scan_status(watch_id,last_at,error,imported,existing,skipped,skipped_files,omitted_skipped_files) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(watch_id) DO UPDATE SET last_at=excluded.last_at,error=excluded.error,imported=excluded.imported,existing=excluded.existing,skipped=excluded.skipped,skipped_files=excluded.skipped_files,omitted_skipped_files=excluded.omitted_skipped_files", id, time.Now().Unix(), message, imported, existing, diagnostics.skipped, string(details), diagnostics.omitted)
+		if err != nil {
+			scanErr = errors.Join(scanErr, fmt.Errorf("persist scan diagnostics: %w", err))
+		}
 	}()
 
 	s.fileMu.Lock()

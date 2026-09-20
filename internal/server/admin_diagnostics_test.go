@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -118,6 +119,40 @@ func TestScanDiagnosticsSurviveBackupRestore(t *testing.T) {
 	}
 }
 
+func TestScanWatchReturnsDiagnosticPersistenceErrors(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		invalidBook bool
+	}{
+		{name: "after successful scan"},
+		{name: "joined with scan failure", invalidBook: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			s, _ := fixture(t)
+			root := t.TempDir()
+			if test.invalidBook {
+				if err := os.WriteFile(filepath.Join(root, "invalid.epub"), []byte("not an epub"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			id, err := s.AddWatch("alice", root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err = s.db.Exec("DROP TABLE scan_status"); err != nil {
+				t.Fatal(err)
+			}
+			err = s.ScanWatch(id)
+			if err == nil || !strings.Contains(err.Error(), "scan_status") {
+				t.Fatalf("missing diagnostics persistence error: %v", err)
+			}
+			if test.invalidBook && !errors.Is(err, ErrInvalid) {
+				t.Fatalf("original scan failure was lost: %v", err)
+			}
+		})
+	}
+}
+
 func TestScanDiagnosticsCaptureFailedAttemptWithinBounds(t *testing.T) {
 	data := t.TempDir()
 	limit := int64(len(epubBytes()))
@@ -138,7 +173,6 @@ func TestScanDiagnosticsCaptureFailedAttemptWithinBounds(t *testing.T) {
 	if err = os.WriteFile(good, epubBytes(), 0600); err != nil {
 		t.Fatal(err)
 	}
-	symlinkAdded := os.Symlink(good, filepath.Join(root, "001-link.epub")) == nil
 	longName := "002-" + strings.Repeat("x", 180) + ".txt"
 	if err = os.WriteFile(filepath.Join(root, longName), []byte("ignored"), 0600); err != nil {
 		t.Fatal(err)
@@ -158,10 +192,6 @@ func TestScanDiagnosticsCaptureFailedAttemptWithinBounds(t *testing.T) {
 	}
 	if err = s.ScanWatch(id); err == nil {
 		t.Fatal("invalid final book should fail the scan")
-	}
-
-	if reason, err := scanSkipReason("pipe.epub", diagnosticsDirEntry{diagnosticsFileInfo{name: "pipe.epub", mode: os.ModeNamedPipe}}, limit); err != nil || reason != "not-regular" {
-		t.Fatalf("nonregular reason=%q error=%v", reason, err)
 	}
 
 	h := NewHandler(s, "https://books.example", "Test Quire")
@@ -184,9 +214,6 @@ func TestScanDiagnosticsCaptureFailedAttemptWithinBounds(t *testing.T) {
 	}
 	scan := scans[0]
 	wantSkipped := 107
-	if symlinkAdded {
-		wantSkipped++
-	}
 	if scan.Imported != 0 || scan.Existing != 0 || scan.Error == "" || scan.Skipped != wantSkipped {
 		t.Fatalf("failed attempt counters: %+v", scan)
 	}
@@ -204,9 +231,6 @@ func TestScanDiagnosticsCaptureFailedAttemptWithinBounds(t *testing.T) {
 	if reasons["000-too-large.epub"] != "too-large" || reasons[longName] != "unsupported-format" {
 		t.Fatalf("missing classified details: %#v", reasons)
 	}
-	if symlinkAdded && reasons["001-link.epub"] != "symlink" {
-		t.Fatalf("missing symlink detail: %#v", reasons)
-	}
 	var files int
 	if err = s.db.QueryRow("SELECT count(*) FROM files").Scan(&files); err != nil || files != 0 {
 		t.Fatalf("failed scan reported committed files=%d error=%v", files, err)
@@ -216,6 +240,59 @@ func TestScanDiagnosticsCaptureFailedAttemptWithinBounds(t *testing.T) {
 	diagnostics.add(strings.Repeat("x", 64<<10), "unsupported-format")
 	if len(diagnostics.files) != 0 || diagnostics.omitted != 1 || diagnostics.skipped != 1 {
 		t.Fatalf("oversized detail was retained: %+v", diagnostics)
+	}
+}
+
+func TestScanSkipReasonClassifiesSymlinkAndNonregular(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		entry diagnosticsDirEntry
+		want  string
+	}{
+		{name: "symlink", entry: diagnosticsDirEntry{diagnosticsFileInfo{name: "link.epub", mode: os.ModeSymlink}}, want: "symlink"},
+		{name: "nonregular", entry: diagnosticsDirEntry{diagnosticsFileInfo{name: "pipe.epub", mode: os.ModeNamedPipe}}, want: "not-regular"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := scanSkipReason(test.entry.Name(), test.entry, DefaultMaxUploadBytes)
+			if err != nil || got != test.want {
+				t.Fatalf("reason=%q want=%q error=%v", got, test.want, err)
+			}
+		})
+	}
+}
+
+func TestScanDiagnosticsPersistSymlinkWhenSupported(t *testing.T) {
+	s, h := fixture(t)
+	if err := s.Promote("alice"); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(t.TempDir(), "target.epub")
+	if err := os.WriteFile(target, epubBytes(), 0600); err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	if err := os.Symlink(target, filepath.Join(root, "link.epub")); err != nil {
+		t.Skipf("symlink integration unavailable: %v", err)
+	}
+	id, err := s.AddWatch("alice", root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = s.ScanWatch(id); err != nil {
+		t.Fatal(err)
+	}
+	raw := rawRequest(t, h, "GET", "/v1/admin/scans", login(t, h, "alice"), http.StatusOK)
+	var scans []struct {
+		ID                  string            `json:"id"`
+		Skipped             int               `json:"skipped"`
+		SkippedFiles        []scanSkippedFile `json:"skippedFiles"`
+		OmittedSkippedFiles int               `json:"omittedSkippedFiles"`
+	}
+	if err = json.Unmarshal(raw, &scans); err != nil || len(scans) != 1 {
+		t.Fatalf("scan response %s: %v", raw, err)
+	}
+	if scans[0].ID != id || scans[0].Skipped != 1 || scans[0].OmittedSkippedFiles != 0 || len(scans[0].SkippedFiles) != 1 || scans[0].SkippedFiles[0] != (scanSkippedFile{Path: "link.epub", Reason: "symlink"}) {
+		t.Fatalf("symlink diagnostic was not persisted: %+v", scans[0])
 	}
 }
 
@@ -313,6 +390,43 @@ func TestBackupStatusIsUnknownForUnavailableObject(t *testing.T) {
 	status = backupStatusRequest(t, h, login(t, h, "alice"), http.StatusOK)
 	if status.FitsBrowser != nil {
 		t.Fatalf("nonregular object should be unknown: %+v", status)
+	}
+}
+
+func TestBackupStatusIsUnknownWhenReferencedObjectCannotBeOpened(t *testing.T) {
+	s, _ := fixture(t)
+	var alice string
+	if err := s.db.QueryRow("SELECT id FROM users WHERE username='alice'").Scan(&alice); err != nil {
+		t.Fatal(err)
+	}
+	book, size, err := s.stage(alice, strings.NewReader(string(epubBytes())), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.db.Exec("INSERT INTO files VALUES (?,?,'upload','',?)", alice, book, size); err != nil {
+		t.Fatal(err)
+	}
+	path := s.objectPath(alice, book)
+	info, err := os.Lstat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !info.Mode().IsRegular() {
+		t.Fatalf("test object must pass regular-file stat: mode=%v", info.Mode())
+	}
+	opened := false
+	status, err := s.backupStatusWithOpen(context.Background(), func(name string) (*os.File, error) {
+		opened = true
+		if name != path {
+			t.Fatalf("opened unexpected path %q", name)
+		}
+		return nil, os.ErrPermission
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !opened || status.FitsBrowser != nil {
+		t.Fatalf("unreadable regular object should be unknown: opened=%v status=%+v", opened, status)
 	}
 }
 

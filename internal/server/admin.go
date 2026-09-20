@@ -7,6 +7,7 @@ import (
 	"crypto/subtle"
 	"database/sql"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -350,7 +351,17 @@ func (a *api) adminRoutes(mux *http.ServeMux) {
 			failure(w, err)
 			return
 		}
-		grants, err := a.store.db.Query("SELECT il.invite_id,l.id,l.name FROM invite_libraries il JOIN libraries l ON l.id=il.library_id ORDER BY il.invite_id,l.name,l.id")
+		if len(out) == 0 {
+			respond(w, 200, out)
+			return
+		}
+		placeholders := make([]string, len(out))
+		args := make([]any, len(out))
+		for i, invite := range out {
+			placeholders[i] = "?"
+			args[i] = invite.ID
+		}
+		grants, err := a.store.db.Query("SELECT il.invite_id,l.id,l.name FROM invite_libraries il JOIN libraries l ON l.id=il.library_id WHERE il.invite_id IN ("+strings.Join(placeholders, ",")+") ORDER BY il.invite_id,l.name,l.id", args...)
 		if err != nil {
 			failure(w, err)
 			return
