@@ -313,8 +313,14 @@ func (a *api) adminRoutes(mux *http.ServeMux) {
 			failure(w, err)
 			return
 		}
-		defer rows.Close()
-		out := []map[string]any{}
+		type inviteListItem struct {
+			ID        string           `json:"id"`
+			ExpiresAt int64            `json:"expiresAt"`
+			Status    string           `json:"status"`
+			Libraries []map[string]any `json:"libraries"`
+		}
+		out := []inviteListItem{}
+		byID := map[string]int{}
 		for rows.Next() {
 			var id string
 			var exp int64
@@ -332,9 +338,40 @@ func (a *api) adminRoutes(mux *http.ServeMux) {
 			} else if exp <= time.Now().Unix() {
 				status = "expired"
 			}
-			out = append(out, map[string]any{"id": id, "expiresAt": exp, "status": status})
+			byID[id] = len(out)
+			out = append(out, inviteListItem{ID: id, ExpiresAt: exp, Status: status, Libraries: []map[string]any{}})
 		}
 		if err = rows.Err(); err != nil {
+			rows.Close()
+			failure(w, err)
+			return
+		}
+		if err = rows.Close(); err != nil {
+			failure(w, err)
+			return
+		}
+		grants, err := a.store.db.Query("SELECT il.invite_id,l.id,l.name FROM invite_libraries il JOIN libraries l ON l.id=il.library_id ORDER BY il.invite_id,l.name,l.id")
+		if err != nil {
+			failure(w, err)
+			return
+		}
+		for grants.Next() {
+			var inviteID, libraryID, name string
+			if err = grants.Scan(&inviteID, &libraryID, &name); err != nil {
+				grants.Close()
+				failure(w, err)
+				return
+			}
+			if index, ok := byID[inviteID]; ok {
+				out[index].Libraries = append(out[index].Libraries, map[string]any{"id": libraryID, "name": name})
+			}
+		}
+		if err = grants.Err(); err != nil {
+			grants.Close()
+			failure(w, err)
+			return
+		}
+		if err = grants.Close(); err != nil {
 			failure(w, err)
 			return
 		}

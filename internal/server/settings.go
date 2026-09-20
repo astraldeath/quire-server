@@ -3,6 +3,7 @@ package server
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -64,7 +65,7 @@ func (a *api) settingsRoutes(mux *http.ServeMux, name string) {
 		if a.admin(w, r) == "" {
 			return
 		}
-		rows, err := a.store.db.Query("SELECT watch_id,last_at,error,imported,existing,skipped FROM scan_status")
+		rows, err := a.store.db.Query("SELECT watch_id,last_at,error,imported,existing,skipped,skipped_files,omitted_skipped_files FROM scan_status")
 		if err != nil {
 			failure(w, err)
 			return
@@ -72,14 +73,19 @@ func (a *api) settingsRoutes(mux *http.ServeMux, name string) {
 		defer rows.Close()
 		out := []map[string]any{}
 		for rows.Next() {
-			var id, message string
+			var id, message, details string
 			var at int64
-			var imported, existing, skipped int
-			if err = rows.Scan(&id, &at, &message, &imported, &existing, &skipped); err != nil {
+			var imported, existing, skipped, omitted int
+			if err = rows.Scan(&id, &at, &message, &imported, &existing, &skipped, &details, &omitted); err != nil {
 				failure(w, err)
 				return
 			}
-			out = append(out, map[string]any{"id": id, "lastAt": at, "error": message, "imported": imported, "existing": existing, "skipped": skipped})
+			files := []scanSkippedFile{}
+			if err = json.Unmarshal([]byte(details), &files); err != nil {
+				failure(w, err)
+				return
+			}
+			out = append(out, map[string]any{"id": id, "lastAt": at, "error": message, "imported": imported, "existing": existing, "skipped": skipped, "skippedFiles": files, "omittedSkippedFiles": omitted})
 		}
 		if err = rows.Err(); err != nil {
 			failure(w, err)

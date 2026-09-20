@@ -192,12 +192,24 @@ func TestWatchedFileUploadLimit(t *testing.T) {
 		t.Fatal(err)
 	}
 	s.maxUploadBytes = int64(len(b) - 1)
-	if err = s.ScanWatch(id); !errors.Is(err, ErrUploadTooLarge) {
-		t.Fatalf("watch limit: %v", err)
+	if err = s.ScanWatch(id); err != nil {
+		t.Fatalf("watch limit scan: %v", err)
+	}
+	var imported, existing, skipped, omitted int
+	var message, details string
+	if err = s.db.QueryRow("SELECT error,imported,existing,skipped,skipped_files,omitted_skipped_files FROM scan_status WHERE watch_id=?", id).Scan(&message, &imported, &existing, &skipped, &details, &omitted); err != nil {
+		t.Fatal(err)
+	}
+	if message != "" || imported != 0 || existing != 0 || skipped != 1 || omitted != 0 || details != `[{"path":"book.epub","reason":"too-large"}]` {
+		t.Fatalf("watch limit diagnostics: error=%q imported=%d existing=%d skipped=%d details=%s omitted=%d", message, imported, existing, skipped, details, omitted)
 	}
 	files, _ := filepath.Glob(filepath.Join(s.data, "objects", "*", "*"))
 	if len(files) != 0 {
 		t.Fatal(files)
+	}
+	var stored int
+	if err = s.db.QueryRow("SELECT count(*) FROM files").Scan(&stored); err != nil || stored != 0 {
+		t.Fatalf("oversized watch import persisted: count=%d error=%v", stored, err)
 	}
 }
 

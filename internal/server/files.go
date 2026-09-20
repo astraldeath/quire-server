@@ -19,6 +19,58 @@ import (
 
 var errWatched = errors.New("watched files cannot be deleted")
 
+const maxScanDetails = 100
+const maxScanDetailsBytes = 64 << 10
+
+type scanSkippedFile struct {
+	Path   string `json:"path"`
+	Reason string `json:"reason"`
+}
+
+type scanDiagnostics struct {
+	files   []scanSkippedFile
+	omitted int
+	skipped int
+}
+
+func (d *scanDiagnostics) add(path, reason string) {
+	d.skipped++
+	if len(d.files) >= maxScanDetails {
+		d.omitted++
+		return
+	}
+	candidate := append(append([]scanSkippedFile(nil), d.files...), scanSkippedFile{Path: filepath.ToSlash(path), Reason: reason})
+	encoded, err := json.Marshal(candidate)
+	if err != nil || len(encoded) > maxScanDetailsBytes {
+		d.omitted++
+		return
+	}
+	d.files = candidate
+}
+
+func scanSkipReason(path string, entry os.DirEntry, maxBytes int64) (string, error) {
+	if entry.Type()&os.ModeSymlink != 0 {
+		return "symlink", nil
+	}
+	if entry.IsDir() {
+		return "", nil
+	}
+	if !supportedBookFilename(path) {
+		return "unsupported-format", nil
+	}
+	info, err := entry.Info()
+	if err != nil {
+		return "", err
+	}
+	if !info.Mode().IsRegular() {
+		return "not-regular", nil
+	}
+	if info.Size() > maxBytes {
+		return "too-large", nil
+	}
+	return "", nil
+}
+
 type FileInfo struct {
 	BookID   string `json:"bookId"`
 	Size     int64  `json:"size"`
@@ -320,7 +372,8 @@ func inside(root, path string) bool {
 	return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)) && !filepath.IsAbs(relative)
 }
 func (s *Store) ScanWatch(id string) (scanErr error) {
-	imported, existing, skipped := 0, 0, 0
+	imported, existing := 0, 0
+	diagnostics := scanDiagnostics{files: []scanSkippedFile{}}
 	defer func() {
 		message := ""
 		if scanErr != nil {
@@ -328,7 +381,8 @@ func (s *Store) ScanWatch(id string) (scanErr error) {
 			imported = 0
 			existing = 0
 		}
-		_, _ = s.db.Exec("INSERT INTO scan_status(watch_id,last_at,error,imported,existing,skipped) VALUES (?,?,?,?,?,?) ON CONFLICT(watch_id) DO UPDATE SET last_at=excluded.last_at,error=excluded.error,imported=excluded.imported,existing=excluded.existing,skipped=excluded.skipped", id, time.Now().Unix(), message, imported, existing, skipped)
+		details, _ := json.Marshal(diagnostics.files)
+		_, _ = s.db.Exec("INSERT INTO scan_status(watch_id,last_at,error,imported,existing,skipped,skipped_files,omitted_skipped_files) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(watch_id) DO UPDATE SET last_at=excluded.last_at,error=excluded.error,imported=excluded.imported,existing=excluded.existing,skipped=excluded.skipped,skipped_files=excluded.skipped_files,omitted_skipped_files=excluded.omitted_skipped_files", id, time.Now().Unix(), message, imported, existing, diagnostics.skipped, string(details), diagnostics.omitted)
 	}()
 
 	s.fileMu.Lock()
@@ -353,15 +407,19 @@ func (s *Store) ScanWatch(id string) (scanErr error) {
 		if walkErr != nil {
 			return walkErr
 		}
-		if entry.Type()&os.ModeSymlink != 0 {
-			skipped++
+		reason, e := scanSkipReason(path, entry, s.maxUploadBytes)
+		if e != nil {
+			return e
+		}
+		if reason != "" {
+			relative, relErr := filepath.Rel(root, path)
+			if relErr != nil {
+				return relErr
+			}
+			diagnostics.add(relative, reason)
 			return nil
 		}
 		if entry.IsDir() {
-			return nil
-		}
-		if !supportedBookFilename(path) {
-			skipped++
 			return nil
 		}
 		if len(items) >= 10000 {
@@ -380,9 +438,6 @@ func (s *Store) ScanWatch(id string) (scanErr error) {
 		}
 		if !before.Mode().IsRegular() {
 			return ErrInvalid
-		}
-		if before.Size() > s.maxUploadBytes {
-			return ErrUploadTooLarge
 		}
 		f, e := os.Open(path)
 		if e != nil {

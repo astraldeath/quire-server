@@ -20,6 +20,7 @@ import (
 
 const backupFormat = 1
 const maxRestoreBytes int64 = 100 << 30
+const browserBackupLimitBytes int64 = 512 << 20
 
 var objectName = regexp.MustCompile(`^objects/[a-f0-9]{64}/[a-f0-9]{64}\.(epub|cbz|fb2|fbz|mobi|azw3|pdf)$`)
 
@@ -34,6 +35,108 @@ type backupManifest struct {
 }
 
 func archiveName(name string) bool { return name == "quire.db" || objectName.MatchString(name) }
+
+func (s *Store) referencedBackupNames(ctx context.Context, db *sql.DB) ([]string, error) {
+	rows, err := db.QueryContext(ctx, "SELECT DISTINCT user_id,book_id FROM files ORDER BY user_id,book_id")
+	if err != nil {
+		return nil, err
+	}
+	type reference struct{ owner, book string }
+	references := []reference{}
+	for rows.Next() {
+		var ref reference
+		if err = rows.Scan(&ref.owner, &ref.book); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		references = append(references, ref)
+		if len(references) > 100000 {
+			rows.Close()
+			return nil, errors.New("backup has too many files")
+		}
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return nil, err
+	}
+	names := make([]string, 0, len(references))
+	for _, ref := range references {
+		name := "objects/" + ref.owner + "/" + filepath.Base(s.objectPath(ref.owner, ref.book))
+		if !archiveName(name) {
+			return nil, ErrInvalid
+		}
+		names = append(names, name)
+	}
+	return names, nil
+}
+
+type backupStatus struct {
+	InputBytes        int64 `json:"inputBytes"`
+	BrowserLimitBytes int64 `json:"browserLimitBytes"`
+	FitsBrowser       *bool `json:"fitsBrowser"`
+}
+
+func boolPointer(value bool) *bool { return &value }
+
+func (s *Store) backupStatus(ctx context.Context) (backupStatus, error) {
+	s.fileMu.Lock()
+	defer s.fileMu.Unlock()
+	status := backupStatus{BrowserLimitBytes: browserBackupLimitBytes}
+	var pageCount, pageSize int64
+	if err := s.db.QueryRowContext(ctx, "PRAGMA page_count").Scan(&pageCount); err != nil {
+		return status, err
+	}
+	if err := s.db.QueryRowContext(ctx, "PRAGMA page_size").Scan(&pageSize); err != nil {
+		return status, err
+	}
+	if pageCount < 0 || pageSize < 0 || (pageCount != 0 && pageSize > (1<<63-1)/pageCount) {
+		return status, errors.New("database size estimate overflow")
+	}
+	status.InputBytes = pageCount * pageSize
+	names, err := s.referencedBackupNames(ctx, s.db)
+	if err != nil {
+		return status, err
+	}
+	var objectBytes int64
+	unavailable := false
+	for _, name := range names {
+		path := filepath.Join(s.data, filepath.FromSlash(name))
+		info, statErr := os.Lstat(path)
+		if statErr != nil || !info.Mode().IsRegular() || info.Size() < 0 {
+			unavailable = true
+			continue
+		}
+		f, openErr := os.Open(path)
+		if openErr != nil {
+			unavailable = true
+			continue
+		}
+		if closeErr := f.Close(); closeErr != nil {
+			unavailable = true
+			continue
+		}
+		if info.Size() > (1<<63-1)-objectBytes || info.Size() > (1<<63-1)-status.InputBytes {
+			return status, errors.New("backup size estimate overflow")
+		}
+		objectBytes += info.Size()
+		status.InputBytes += info.Size()
+	}
+	if unavailable {
+		return status, nil
+	}
+	if objectBytes > browserBackupLimitBytes {
+		status.FitsBrowser = boolPointer(false)
+		return status, nil
+	}
+	// ZIP Store has no compression savings. Leave an explicit margin for the
+	// snapshot, manifest and ZIP headers when the estimate is near the limit.
+	overhead := int64(1<<20) + int64(len(names))*1024
+	if status.InputBytes <= browserBackupLimitBytes-overhead {
+		status.FitsBrowser = boolPointer(true)
+	}
+	return status, nil
+}
 
 // Backup snapshots SQLite while file mutations are paused, then packages only
 // objects referenced by that snapshot. No logs, local secrets or source folders.
@@ -61,33 +164,12 @@ func (s *Store) Backup(ctx context.Context, destination string) (err error) {
 	if _, err = db.ExecContext(ctx, "PRAGMA secure_delete=ON; DELETE FROM sessions; DELETE FROM tracking_accounts; UPDATE tracking_links SET auto=0; PRAGMA journal_mode=DELETE;"); err != nil {
 		return err
 	}
-	rows, err := db.QueryContext(ctx, "SELECT DISTINCT user_id,book_id FROM files ORDER BY user_id,book_id")
-	if err != nil {
-		return err
-	}
 	names := []string{"quire.db"}
-	for rows.Next() {
-		var owner, book string
-		if err = rows.Scan(&owner, &book); err != nil {
-			rows.Close()
-			return err
-		}
-		name := "objects/" + owner + "/" + filepath.Base(s.objectPath(owner, book))
-		if !archiveName(name) {
-			rows.Close()
-			return ErrInvalid
-		}
-		names = append(names, name)
-		if len(names) > 100001 {
-			rows.Close()
-			return errors.New("backup has too many files")
-		}
-	}
-	err = rows.Err()
-	rows.Close()
+	objectNames, err := s.referencedBackupNames(ctx, db)
 	if err != nil {
 		return err
 	}
+	names = append(names, objectNames...)
 	if err = db.Close(); err != nil {
 		return err
 	}
@@ -293,7 +375,7 @@ func prepareRestoredDatabase(path string, files map[string]backupEntry) error {
 	if err = db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
-	if version < 6 || version > 11 {
+	if version < 6 || version > 12 {
 		return errors.New("backup database version is not supported")
 	}
 	var check string
@@ -340,6 +422,17 @@ func prepareRestoredDatabase(path string, files map[string]backupEntry) error {
 	return err
 }
 func (a *api) backupRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("GET /v1/admin/backup/status", func(w http.ResponseWriter, r *http.Request) {
+		if a.admin(w, r) == "" {
+			return
+		}
+		status, err := a.store.backupStatus(r.Context())
+		if err != nil {
+			failure(w, err)
+			return
+		}
+		respond(w, http.StatusOK, status)
+	})
 	mux.HandleFunc("POST /v1/admin/backup", func(w http.ResponseWriter, r *http.Request) {
 		if a.admin(w, r) == "" {
 			return
@@ -364,6 +457,10 @@ func (a *api) backupRoutes(mux *http.ServeMux) {
 		info, err := f.Stat()
 		if err != nil {
 			failure(w, err)
+			return
+		}
+		if info.Size() > browserBackupLimitBytes {
+			respond(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "Backup exceeds the browser download limit."})
 			return
 		}
 		w.Header().Set("Content-Type", "application/zip")
