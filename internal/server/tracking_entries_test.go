@@ -201,7 +201,7 @@ func TestTrackingPrivacyMigration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.db.Exec(`INSERT INTO users(id,username,salt,password_hash) VALUES ('user','reader',X'',X''); INSERT INTO tracking_links(user_id,book_id,series_key,series_id,title,volume,auto,complete_entry) VALUES ('user','book','',42,'Novel',0,0,0); ALTER TABLE tracking_links DROP COLUMN is_private; ALTER TABLE scan_status DROP COLUMN skipped_files; ALTER TABLE scan_status DROP COLUMN omitted_skipped_files; PRAGMA user_version=10;`); err != nil {
+	if _, err = s.db.Exec(`INSERT INTO users(id,username,salt,password_hash) VALUES ('user','reader',X'',X''); INSERT INTO tracking_links(user_id,book_id,series_key,series_id,title,volume,auto,complete_entry) VALUES ('user','book','',42,'Novel',0,0,0); ALTER TABLE tracking_links DROP COLUMN is_private; ALTER TABLE scan_status DROP COLUMN skipped_files; ALTER TABLE scan_status DROP COLUMN omitted_skipped_files; DROP TABLE folder_catalog; PRAGMA user_version=10;`); err != nil {
 		t.Fatal(err)
 	}
 	s.Close()

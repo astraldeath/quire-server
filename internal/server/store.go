@@ -50,7 +50,7 @@ func OpenWithOptions(path string, options StoreOptions) (*Store, error) {
 	if err = db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return fail(err)
 	}
-	if version > 12 {
+	if version > 13 {
 		return fail(errors.New("database was created by a newer server"))
 	}
 	if version == 0 {
@@ -151,6 +151,12 @@ PRAGMA user_version=7;COMMIT;`)
 ALTER TABLE scan_status ADD COLUMN skipped_files TEXT NOT NULL DEFAULT '[]';
 ALTER TABLE scan_status ADD COLUMN omitted_skipped_files INTEGER NOT NULL DEFAULT 0;
 PRAGMA user_version=12;COMMIT;`)
+		if err != nil {
+			return fail(err)
+		}
+	}
+	if version < 13 {
+		_, err = db.Exec(`BEGIN; CREATE TABLE folder_catalog(user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,revision INTEGER NOT NULL,state TEXT NOT NULL); PRAGMA user_version=13; COMMIT;`)
 		if err != nil {
 			return fail(err)
 		}

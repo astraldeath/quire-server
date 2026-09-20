@@ -87,7 +87,7 @@ func TestPrivacyMigrationFromVersionNine(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.db.Exec("DROP TABLE privacy_settings; ALTER TABLE tracking_links DROP COLUMN is_private; ALTER TABLE scan_status DROP COLUMN skipped_files; ALTER TABLE scan_status DROP COLUMN omitted_skipped_files; PRAGMA user_version=9;"); err != nil {
+	if _, err = s.db.Exec("DROP TABLE folder_catalog; DROP TABLE privacy_settings; ALTER TABLE tracking_links DROP COLUMN is_private; ALTER TABLE scan_status DROP COLUMN skipped_files; ALTER TABLE scan_status DROP COLUMN omitted_skipped_files; PRAGMA user_version=9;"); err != nil {
 		t.Fatal(err)
 	}
 	s.Close()
@@ -100,7 +100,7 @@ func TestPrivacyMigrationFromVersionNine(t *testing.T) {
 	if err = s.db.QueryRow("SELECT count(*) FROM privacy_settings").Scan(&count); err != nil {
 		t.Fatal(err)
 	}
-	if err = s.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 12 {
+	if err = s.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 13 {
 		t.Fatalf("migration failed %d %v", version, err)
 	}
 }

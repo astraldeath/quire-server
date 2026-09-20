@@ -150,6 +150,7 @@ func NewConfiguredHandler(store *Store, publicURL, name, setupCode string) http.
 	a.trackingRoutes(mux)
 	a.statisticsRoutes(mux)
 	a.privacyRoutes(mux)
+	a.folderCatalogRoutes(mux)
 	a.settingsRoutes(mux, name)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		if err := store.db.PingContext(r.Context()); err != nil {
@@ -164,7 +165,7 @@ func NewConfiguredHandler(store *Store, publicURL, name, setupCode string) http.
 			failure(w, err)
 			return
 		}
-		respond(w, 200, map[string]any{"name": settings.Name, "apiVersion": "1", "apiUrl": strings.TrimRight(publicURL, "/") + "/v1", "registration": "owner-only", "limits": map[string]int64{"maxUploadBytes": store.maxUploadBytes, "maxDownloadBytes": MaxStoredBookBytes}, "capabilities": []string{"server-assigned-upload", "reading-data-sync", "device-sessions", "epub-files", "watched-folders", "multiple-folders", "current-chapter"}})
+		respond(w, 200, map[string]any{"name": settings.Name, "apiVersion": "1", "apiUrl": strings.TrimRight(publicURL, "/") + "/v1", "registration": "owner-only", "limits": map[string]int64{"maxUploadBytes": store.maxUploadBytes, "maxDownloadBytes": MaxStoredBookBytes}, "capabilities": []string{"server-assigned-upload", "reading-data-sync", "device-sessions", "epub-files", "watched-folders", "multiple-folders", "current-chapter", "folder-catalog"}})
 	})
 	mux.HandleFunc("POST /v1/sessions", func(w http.ResponseWriter, r *http.Request) {
 		if !a.allowLogin(r.RemoteAddr) {
