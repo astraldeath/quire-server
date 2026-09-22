@@ -152,6 +152,7 @@ func NewConfiguredHandler(store *Store, publicURL, name, setupCode string) http.
 	a.privacyRoutes(mux)
 	a.folderCatalogRoutes(mux)
 	a.catalogSourceRoutes(mux)
+	a.catalogProxyRoutes(mux)
 	a.settingsRoutes(mux, name)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		if err := store.db.PingContext(r.Context()); err != nil {
