@@ -53,7 +53,7 @@ func TestScanDiagnosticsMigrationUpgradesVersionElevenAndReopens(t *testing.T) {
 	}
 	if _, err = s.db.Exec(`ALTER TABLE scan_status DROP COLUMN skipped_files;
 		ALTER TABLE scan_status DROP COLUMN omitted_skipped_files;
-		DROP TABLE folder_catalog; PRAGMA user_version=11;`); err != nil {
+		DROP TABLE folder_catalog; DROP TABLE catalog_sources; DROP TABLE catalog_operations; DROP TABLE opds_passwords; PRAGMA user_version=11;`); err != nil {
 		s.Close()
 		t.Fatal(err)
 	}
@@ -68,7 +68,7 @@ func TestScanDiagnosticsMigrationUpgradesVersionElevenAndReopens(t *testing.T) {
 	var version int
 	var details string
 	var omitted int
-	if err = s.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 13 {
+	if err = s.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 14 {
 		t.Fatalf("migration version=%d error=%v", version, err)
 	}
 	if _, err = s.db.Exec("INSERT INTO scan_status(watch_id,last_at,error,imported,existing,skipped) VALUES ('watch',1,'',0,0,0)"); err != nil {
@@ -85,7 +85,7 @@ func TestScanDiagnosticsMigrationUpgradesVersionElevenAndReopens(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if err = s.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 13 {
+	if err = s.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 14 {
 		t.Fatalf("reopen version=%d error=%v", version, err)
 	}
 }
@@ -114,7 +114,7 @@ func TestScanDiagnosticsSurviveBackupRestore(t *testing.T) {
 	if err = restored.db.QueryRow("SELECT skipped_files,omitted_skipped_files FROM scan_status WHERE watch_id='watch'").Scan(&gotDetails, &gotOmitted); err != nil || gotDetails != details || gotOmitted != 2 {
 		t.Fatalf("restored details=%q omitted=%d error=%v", gotDetails, gotOmitted, err)
 	}
-	if err = restored.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 13 {
+	if err = restored.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 14 {
 		t.Fatalf("restored version=%d error=%v", version, err)
 	}
 }

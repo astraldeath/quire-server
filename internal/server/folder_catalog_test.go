@@ -43,7 +43,7 @@ func TestFolderCatalogMigrationBackup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.db.Exec("DROP TABLE folder_catalog; PRAGMA user_version=12"); err != nil {
+	if _, err = s.db.Exec("DROP TABLE folder_catalog; DROP TABLE catalog_sources; DROP TABLE catalog_operations; DROP TABLE opds_passwords; PRAGMA user_version=12"); err != nil {
 		t.Fatal(err)
 	}
 	s.Close()
@@ -54,7 +54,7 @@ func TestFolderCatalogMigrationBackup(t *testing.T) {
 	defer s.Close()
 	var version int
 	s.db.QueryRow("PRAGMA user_version").Scan(&version)
-	if version != 13 {
+	if version != 14 {
 		t.Fatal(version)
 	}
 	if err = s.CreateUser("alice", testPassword); err != nil {
@@ -110,7 +110,7 @@ func TestFolderCatalogBoundsCascadeAndFutureBackup(t *testing.T) {
 	if err := s.db.QueryRow("SELECT count(*) FROM folder_catalog WHERE user_id='catalog-only'").Scan(&count); err != nil || count != 0 {
 		t.Fatalf("catalog not removed: %d %v", count, err)
 	}
-	if _, err := s.db.Exec("PRAGMA user_version=14"); err != nil {
+	if _, err := s.db.Exec("PRAGMA user_version=15"); err != nil {
 		t.Fatal(err)
 	}
 	archive := filepath.Join(t.TempDir(), "future.zip")
