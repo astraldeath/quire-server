@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-var webRoute = regexp.MustCompile(`^/(library|reading|account|settings(/(appearance|library|backups|statistics|privacy|updates|server))?|admin(/(overview|libraries|folders|settings|accounts|invites|backups))?|books/[a-f0-9]{64}(/(read|tracking))?|series/[^/]+(/tracking)?)$`)
+var webRoute = regexp.MustCompile(`^/(library|reading|catalogs|account|settings(/(appearance|library|backups|statistics|privacy|updates|server))?|admin(/(overview|libraries|folders|settings|accounts|invites|backups))?|books/[a-f0-9]{64}(/(read|tracking))?|series/[^/]+(/tracking)?)$`)
 
 // WebUI serves only a dedicated reader build directory, never the data directory.
 func WebUI(api http.Handler, directory string) http.Handler {
@@ -18,7 +18,7 @@ func WebUI(api http.Handler, directory string) http.Handler {
 	}
 	files := http.FileServer(http.Dir(directory))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasPrefix(r.URL.Path, "/v1/") || strings.HasPrefix(r.URL.Path, "/.well-known/") || r.URL.Path == "/healthz" {
+		if strings.HasPrefix(r.URL.Path, "/v1/") || strings.HasPrefix(r.URL.Path, "/.well-known/") || r.URL.Path == "/healthz" || r.URL.Path == "/opds" || strings.HasPrefix(r.URL.Path, "/opds/") {
 			api.ServeHTTP(w, r)
 			return
 		}
