@@ -10,6 +10,16 @@
     "description": "Private reading-data sync and EPUB storage. Account and watched-folder administration are owner CLI operations."
   },
   "paths": {
+    "/opds": {"get":{"summary":"OPDS 1.2 catalog for the authenticated account","security":[{"opdsBasic":[]}],"responses":{"200":{"description":"Privacy-filtered Atom feed","content":{"application/atom+xml":{"schema":{"type":"string"}}}},"401":{"description":"OPDS app password required"}}}},
+    "/opds/v2": {"get":{"summary":"OPDS 2.0 catalog for the authenticated account","security":[{"opdsBasic":[]}],"responses":{"200":{"description":"Privacy-filtered OPDS JSON feed","content":{"application/opds+json":{"schema":{"type":"object"}}}},"401":{"description":"OPDS app password required"}}}},
+    "/v1/opds/passwords": {
+      "get":{"summary":"List named OPDS app passwords without secrets","security":[{"bearerAuth":[]}],"responses":{"200":{"description":"Password metadata","content":{"application/json":{"schema":{"type":"object","required":["passwords"],"properties":{"passwords":{"type":"array","items":{"$ref":"#/components/schemas/OPDSPassword"}}}}}}}}},
+      "post":{"summary":"Create a read-only OPDS password, disclosed once","security":[{"bearerAuth":[]}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","required":["name"],"additionalProperties":false,"properties":{"name":{"type":"string","minLength":1,"maxLength":100}}}}}},"responses":{"201":{"description":"Created password and one-time secret","content":{"application/json":{"schema":{"allOf":[{"$ref":"#/components/schemas/OPDSPassword"},{"type":"object","required":["password"],"properties":{"password":{"type":"string"}}}]}}}},"409":{"description":"Password capacity reached"}}}
+    },
+    "/v1/opds/passwords/{id}": {"delete":{"summary":"Revoke an account-owned OPDS password","security":[{"bearerAuth":[]}],"parameters":[{"name":"id","in":"path","required":true,"schema":{"type":"string"}}],"responses":{"204":{"description":"Revoked"}}}},
+    "/v1/catalog-sources": {"get":{"summary":"List account catalog metadata including tombstones","security":[{"bearerAuth":[]}],"responses":{"200":{"description":"Sources without credentials","content":{"application/json":{"schema":{"type":"object","required":["sources"],"properties":{"sources":{"type":"array","items":{"$ref":"#/components/schemas/CatalogSource"}}}}}}}}}},
+    "/v1/catalog-sources/{id}": {"put":{"summary":"Compare-and-swap catalog metadata and optional encrypted credentials","security":[{"bearerAuth":[]}],"parameters":[{"name":"id","in":"path","required":true,"schema":{"type":"string","maxLength":128}}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","required":["name","url","baseRevision","operationId"],"additionalProperties":false,"properties":{"name":{"type":"string","minLength":1,"maxLength":200},"url":{"type":"string","format":"uri","maxLength":4096},"baseRevision":{"type":"integer","minimum":0},"operationId":{"type":"string","minLength":1,"maxLength":128},"deleted":{"type":"boolean"},"credentials":{"type":"object","additionalProperties":false,"properties":{"username":{"type":"string","maxLength":512},"password":{"type":"string","maxLength":4096}}}}}}}},"responses":{"200":{"description":"Accepted source","content":{"application/json":{"schema":{"$ref":"#/components/schemas/CatalogSource"}}}},"409":{"description":"Stale revision, changed operation payload, or capacity conflict"}}}},
+    "/v1/catalog-sources/{id}/fetch": {"post":{"summary":"Fetch a public or explicitly allowed LAN catalog resource for an owned source","security":[{"bearerAuth":[]}],"parameters":[{"name":"id","in":"path","required":true,"schema":{"type":"string"}}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","additionalProperties":false,"required":["url","kind"],"properties":{"url":{"type":"string","format":"uri"},"kind":{"enum":["feed","cover","book"]}}}}}},"responses":{"200":{"description":"Feed envelope or streamed cover/book","content":{"application/json":{"schema":{"type":"object","required":["body","contentType","url"],"properties":{"body":{"type":"string"},"contentType":{"type":"string"},"url":{"type":"string","format":"uri"}}}},"application/octet-stream":{"schema":{"type":"string","format":"binary"}},"image/jpeg":{"schema":{"type":"string","format":"binary"}}}},"401":{"description":"Session or upstream catalog authentication required"},"404":{"description":"Source is absent, deleted, or belongs to another account"},"502":{"description":"Rejected destination, timeout, upstream failure, or invalid response size"}}}},
     "/v1/updates": {
       "get": {
         "security": [{"bearerAuth": []}],
@@ -1819,6 +1829,8 @@
   },
   "components": {
     "schemas": {
+      "CatalogSource":{"type":"object","required":["id","name","url","revision","deleted"],"properties":{"id":{"type":"string"},"name":{"type":"string"},"url":{"type":"string","format":"uri"},"revision":{"type":"integer","minimum":1},"deleted":{"type":"boolean"}}},
+      "OPDSPassword":{"type":"object","required":["id","name","createdAt"],"properties":{"id":{"type":"string"},"name":{"type":"string"},"createdAt":{"type":"integer","description":"Unix milliseconds"}}},
       "Error": {
         "type": "object",
         "additionalProperties": false,
@@ -2417,6 +2429,7 @@
       }
     },
     "securitySchemes": {
+      "opdsBasic": {"type":"http","scheme":"basic","description":"Quire username and read-only OPDS app password; cannot authenticate /v1 routes"},
       "bearerAuth": {
         "type": "http",
         "scheme": "bearer"
@@ -2424,3 +2437,4 @@
     }
   }
 }
+
