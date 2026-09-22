@@ -48,7 +48,7 @@ func catalogIPAllowed(ip net.IP, lan bool) bool {
 		return false
 	}
 	// Carrier-grade NAT contains cloud metadata addresses; never opt it in.
-	for _, cidr := range []string{"100.64.0.0/10", "192.0.0.0/24", "198.18.0.0/15", "2001:db8::/32", "2001::/32", "2002::/16"} {
+	for _, cidr := range []string{"0.0.0.0/8", "100.64.0.0/10", "168.63.129.16/32", "192.0.0.0/24", "192.0.2.0/24", "198.18.0.0/15", "198.51.100.0/24", "203.0.113.0/24", "240.0.0.0/4", "fd00:ec2::254/128", "64:ff9b::/96", "64:ff9b:1::/48", "2001:db8::/32", "2001::/32", "2002::/16"} {
 		_, block, _ := net.ParseCIDR(cidr)
 		if block.Contains(ip) {
 			return false

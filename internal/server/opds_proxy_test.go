@@ -17,7 +17,7 @@ func TestOPDSProxyPolicy(t *testing.T) {
 			t.Fatalf("accepted %s", raw)
 		}
 	}
-	for _, ip := range []string{"169.254.169.254", "fe80::1", "100.100.100.200", "0.0.0.0", "224.0.0.1"} {
+	for _, ip := range []string{"169.254.169.254", "fe80::1", "100.100.100.200", "0.0.0.0", "224.0.0.1", "fd00:ec2::254", "168.63.129.16", "64:ff9b::a9fe:a9fe", "240.0.0.1"} {
 		if catalogIPAllowed(net.ParseIP(ip), true) {
 			t.Fatal(ip)
 		}
@@ -83,4 +83,39 @@ func TestOPDSProxyOwnershipAndFeedLimits(t *testing.T) {
 	request(t, h, "PUT", "/v1/catalog-sources/source", alice, map[string]any{"name": "Source", "url": source.URL, "baseRevision": 0, "operationId": "create"}, 200)
 	request(t, h, "POST", "/v1/catalog-sources/source/fetch", bob, map[string]any{"url": source.URL, "kind": "feed"}, 404)
 	request(t, h, "POST", "/v1/catalog-sources/source/fetch", alice, map[string]any{"url": source.URL, "kind": "feed"}, 502)
+}
+
+func TestOPDSProxyCancellationRedirectLimitsAndTruncation(t *testing.T) {
+	var source *httptest.Server
+	source = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/loop":
+			http.Redirect(w, r, source.URL+"/loop", 302)
+		case "/truncated":
+			w.Header().Set("Content-Length", "100")
+			io.WriteString(w, "short")
+		default:
+			io.WriteString(w, "success")
+		}
+	}))
+	defer source.Close()
+	transport := newCatalogTransport([]string{source.URL})
+	if _, e := transport.fetch(context.Background(), source.URL+"/loop", source.URL, nil); e == nil {
+		t.Fatal("redirect loop allowed")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, e := transport.fetch(ctx, source.URL, source.URL, nil); e == nil {
+		t.Fatal("cancelled fetch allowed")
+	}
+	s, _ := fixture(t)
+	t.Setenv("QUIRE_OPDS_ALLOWED_ORIGINS", source.URL)
+	h := NewHandler(s, "https://books.example", "Test")
+	token := login(t, h, "alice")
+	request(t, h, "PUT", "/v1/catalog-sources/source", token, map[string]any{"name": "Saved", "url": source.URL, "operationId": "save"}, 200)
+	request(t, h, "POST", "/v1/catalog-sources/source/fetch", token, map[string]any{"url": source.URL + "/truncated", "kind": "feed"}, 502)
+	out := request(t, h, "POST", "/v1/catalog-sources/source/fetch", token, map[string]any{"url": source.URL, "kind": "feed"}, 200)
+	if string(out["body"]) != `"success"` {
+		t.Fatal(out)
+	}
 }

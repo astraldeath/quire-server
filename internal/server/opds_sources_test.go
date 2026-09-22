@@ -1,7 +1,9 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -42,5 +44,37 @@ func TestCatalogSourceRevisionOwnershipAndSecrets(t *testing.T) {
 	json.Unmarshal(all["sources"], &sources)
 	if len(sources) != 1 || sources[0]["deleted"] != true {
 		t.Fatal(sources)
+	}
+}
+
+func TestCatalogSourceBackupDropsCredentialsAndPasswords(t *testing.T) {
+	s, h := fixture(t)
+	token := login(t, h, "alice")
+	request(t, h, "PUT", "/v1/catalog-sources/source", token, map[string]any{"name": "Saved", "url": "https://example.com/opds", "operationId": "save", "credentials": map[string]string{"username": "u", "password": "secret"}}, 200)
+	request(t, h, "POST", "/v1/opds/passwords", token, map[string]string{"name": "Reader"}, 201)
+	archive := filepath.Join(t.TempDir(), "backup.zip")
+	if e := s.Backup(context.Background(), archive); e != nil {
+		t.Fatal(e)
+	}
+	destination := filepath.Join(t.TempDir(), "restore")
+	if e := RestoreBackup(archive, destination); e != nil {
+		t.Fatal(e)
+	}
+	restored, e := Open(filepath.Join(destination, "quire.db"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer restored.Close()
+	var name string
+	var secret []byte
+	if e = restored.db.QueryRow("SELECT name,secret FROM catalog_sources").Scan(&name, &secret); e != nil || name != "Saved" || len(secret) != 0 {
+		t.Fatal(name, len(secret), e)
+	}
+	for _, table := range []string{"catalog_operations", "opds_passwords"} {
+		var count int
+		restored.db.QueryRow("SELECT count(*) FROM " + table).Scan(&count)
+		if count != 0 {
+			t.Fatal(table, count)
+		}
 	}
 }

@@ -52,6 +52,7 @@ The image pins reader commit `bb72169cb2338e4eb6d3e319bd5d75ee58af74a5`. Use `QU
 - [Server commands, Docker, reader connections, and watched folders](docs/OPERATIONS.md)
 - [Backup and restore](docs/BACKUPS.md)
 - [MangaBaka OAuth and tracking](docs/tracking.md)
+- [OPDS catalogs, app passwords, and external sources](docs/OPDS.md)
 - [API and synchronization semantics](docs/API.md)
 - [OpenAPI contract](api/openapi.json)
 
