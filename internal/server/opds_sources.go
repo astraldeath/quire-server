@@ -107,9 +107,14 @@ func (s *Store) writeCatalogSource(user, id string, in catalogSourceWrite) (cata
 			return out, ErrConflict
 		}
 	}
-	// Changing a destination never silently sends credentials to its new origin.
-	if in.Credentials == nil && !in.Deleted && oldURL == in.URL {
-		encrypted = oldSecret
+	// Paths and queries share credentials, but a new origin never silently
+	// receives the old secret. Explicit replacements and clears take precedence.
+	if in.Credentials == nil && !in.Deleted {
+		previous, previousErr := catalogURL(oldURL)
+		next, nextErr := catalogURL(in.URL)
+		if previousErr == nil && nextErr == nil && catalogOrigin(previous) == catalogOrigin(next) {
+			encrypted = oldSecret
+		}
 	}
 	out.Revision = rev + 1
 	_, e = tx.Exec("INSERT INTO catalog_sources VALUES(?,?,?,?,?,?,?) ON CONFLICT(user_id,id) DO UPDATE SET name=excluded.name,url=excluded.url,revision=excluded.revision,deleted=excluded.deleted,secret=excluded.secret", user, id, out.Name, out.URL, out.Revision, out.Deleted, encrypted)

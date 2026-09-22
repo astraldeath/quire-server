@@ -78,3 +78,48 @@ func TestCatalogSourceBackupDropsCredentialsAndPasswords(t *testing.T) {
 		}
 	}
 }
+
+func TestCatalogSourceEditsRetainCredentialsOnlyWithinOrigin(t *testing.T) {
+	s, _ := fixture(t)
+	var user string
+	if err := s.db.QueryRow("SELECT id FROM users WHERE username='alice'").Scan(&user); err != nil {
+		t.Fatal(err)
+	}
+	original := catalogCredentials{Username: "reader", Password: "original"}
+	replacement := catalogCredentials{Username: "replacement", Password: "new-password"}
+	tests := []struct {
+		name, url   string
+		credentials *catalogCredentials
+		want        *catalogCredentials
+	}{
+		{"path", "https://example.com/opds/v2", nil, &original},
+		{"query", "https://example.com/opds?lang=en", nil, &original},
+		{"normalized origin", "https://EXAMPLE.com:443/opds/v2", nil, &original},
+		{"different host", "https://other.example/opds", nil, nil},
+		{"different port", "https://example.com:8443/opds", nil, nil},
+		{"different scheme", "http://example.com/opds", nil, nil},
+		{"same origin replacement", "https://example.com/opds/v2", &replacement, &replacement},
+		{"cross origin replacement", "https://other.example/opds", &replacement, &replacement},
+		{"explicit clear", "https://example.com/opds/v2", &catalogCredentials{}, nil},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			id := randomID()
+			_, err := s.writeCatalogSource(user, id, catalogSourceWrite{Name: "Books", URL: "https://example.com/opds", OperationID: randomID(), Credentials: &original})
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = s.writeCatalogSource(user, id, catalogSourceWrite{Name: "Books", URL: tc.url, BaseRevision: 1, OperationID: randomID(), Credentials: tc.credentials})
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, got, err := s.catalogSourceSecret(user, id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if (got == nil) != (tc.want == nil) || (got != nil && tc.want != nil && *got != *tc.want) {
+				t.Fatalf("credentials presence or value mismatch: got present=%t, want present=%t", got != nil, tc.want != nil)
+			}
+		})
+	}
+}

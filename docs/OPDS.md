@@ -31,8 +31,9 @@ identical operation ID is idempotent. Reusing an operation ID with a different
 payload returns 409.
 
 Hosted source credentials are encrypted using the existing server secret key
-mechanism (`tracking.key`). Source reads never disclose credentials. Changing a
-source URL drops existing credentials unless replacements are explicitly supplied.
+mechanism (`tracking.key`). Source reads never disclose credentials. Editing a
+source path or query retains credentials within the same origin. Changing its
+scheme, host, or effective port drops credentials unless replacements are explicitly supplied.
 An empty username and password clears credentials; deleting a source does too.
 Ordinary server backups retain source names, URLs, revisions, and tombstones,
 but remove source secrets, operation history, and OPDS app passwords. Restore
