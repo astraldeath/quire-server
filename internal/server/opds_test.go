@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func opdsRequest(h http.Handler, path, user, password string) *httptest.ResponseRecorder {
@@ -144,6 +145,15 @@ func TestOPDSNavigationSearchPaginationAndSharedPrivacy(t *testing.T) {
 	second := read("/opds/v2?view=all&page=2")
 	if len(second.Publications) != 2 {
 		t.Fatal(len(second.Publications))
+	}
+	// Catalog recency follows stored-file arrival, not later metadata edits.
+	newestID := fmt.Sprintf("%064x", 1)
+	newestTime := time.Now().Add(time.Hour)
+	if e := os.Chtimes(s.objectPath(user, newestID), newestTime, newestTime); e != nil {
+		t.Fatal(e)
+	}
+	if read("/opds/v2?view=recent").Publications[0].Metadata.Identifier != "urn:sha256:"+newestID {
+		t.Fatal("recent order ignored file arrival time")
 	}
 	if len(read("/opds/v2?view=all&q=51").Publications) != 1 {
 		t.Fatal("search failed")

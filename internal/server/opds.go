@@ -82,8 +82,10 @@ func (s *Store) opdsBooks(user string) ([]opdsBook, error) {
 		if e == nil && info.Mode().IsRegular() {
 			if b.Added == 0 {
 				b.Metadata = s.objectMetadata(b.Owner, b.ID)
-				b.Added = info.ModTime().UnixMilli()
 			}
+			// Metadata edits replace sync candidates; they must not make an old
+			// book appear newly added. Stored objects retain their arrival time.
+			b.Added = info.ModTime().UnixMilli()
 			if b.Metadata.Title == "" {
 				b.Metadata.Title = "Untitled"
 			}
