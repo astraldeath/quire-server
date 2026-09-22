@@ -50,7 +50,7 @@ func OpenWithOptions(path string, options StoreOptions) (*Store, error) {
 	if err = db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return fail(err)
 	}
-	if version > 13 {
+	if version > 14 {
 		return fail(errors.New("database was created by a newer server"))
 	}
 	if version == 0 {
@@ -157,6 +157,16 @@ PRAGMA user_version=12;COMMIT;`)
 	}
 	if version < 13 {
 		_, err = db.Exec(`BEGIN; CREATE TABLE folder_catalog(user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,revision INTEGER NOT NULL,state TEXT NOT NULL); PRAGMA user_version=13; COMMIT;`)
+		if err != nil {
+			return fail(err)
+		}
+	}
+	if version < 14 {
+		_, err = db.Exec(`BEGIN;
+CREATE TABLE catalog_sources(user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,id TEXT NOT NULL,name TEXT NOT NULL,url TEXT NOT NULL,revision INTEGER NOT NULL,deleted INTEGER NOT NULL,secret BLOB,PRIMARY KEY(user_id,id));
+CREATE TABLE catalog_operations(user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,id TEXT NOT NULL,digest BLOB NOT NULL,result TEXT NOT NULL,PRIMARY KEY(user_id,id));
+CREATE TABLE opds_passwords(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,name TEXT NOT NULL,digest BLOB UNIQUE NOT NULL,created_at INTEGER NOT NULL);
+PRAGMA user_version=14;COMMIT;`)
 		if err != nil {
 			return fail(err)
 		}

@@ -165,7 +165,7 @@ func (s *Store) Backup(ctx context.Context, destination string) (err error) {
 		return err
 	}
 	defer db.Close()
-	if _, err = db.ExecContext(ctx, "PRAGMA secure_delete=ON; DELETE FROM sessions; DELETE FROM tracking_accounts; UPDATE tracking_links SET auto=0; PRAGMA journal_mode=DELETE;"); err != nil {
+	if _, err = db.ExecContext(ctx, "PRAGMA secure_delete=ON; DELETE FROM sessions; DELETE FROM opds_passwords; UPDATE catalog_sources SET secret=NULL; DELETE FROM catalog_operations; DELETE FROM tracking_accounts; UPDATE tracking_links SET auto=0; PRAGMA journal_mode=DELETE;"); err != nil {
 		return err
 	}
 	names := []string{"quire.db"}
@@ -379,7 +379,7 @@ func prepareRestoredDatabase(path string, files map[string]backupEntry) error {
 	if err = db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
-	if version < 6 || version > 13 {
+	if version < 6 || version > 14 {
 		return errors.New("backup database version is not supported")
 	}
 	var check string
@@ -416,6 +416,11 @@ func prepareRestoredDatabase(path string, files map[string]backupEntry) error {
 	}
 	if count+1 != len(files) {
 		return errors.New("unreferenced files in backup")
+	}
+	if version >= 14 {
+		if _, err = db.Exec("DELETE FROM opds_passwords; UPDATE catalog_sources SET secret=NULL; DELETE FROM catalog_operations"); err != nil {
+			return err
+		}
 	}
 	if version >= 7 {
 		if _, err = db.Exec("DELETE FROM tracking_accounts; UPDATE tracking_links SET auto=0"); err != nil {
