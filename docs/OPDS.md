@@ -21,7 +21,7 @@ listings, counts, covers, and downloads. Shared-library books also honor their
 owner's privacy state. Direct links are checked on every request. Privacy changes
 made on an offline client only take effect here after they sync.
 
-## External catalog sources
+## Saved external catalogs
 
 Saved sources belong to one account and sync through their own revisioned API.
 They remain separate from reading-data records. Tombstones prevent deleted
@@ -30,14 +30,16 @@ show a conflict and let the user decide which metadata to keep. Retrying an
 identical operation ID is idempotent. Reusing an operation ID with a different
 payload returns 409.
 
-Hosted source credentials are encrypted using the existing server secret key
-mechanism (`tracking.key`). Source reads never disclose credentials. Editing a
+Hosted source credentials are encrypted with the private server key
+(`tracking.key`). Source reads never disclose credentials. Editing a
 source path or query retains credentials within the same origin. Changing its
 scheme, host, or effective port drops credentials unless replacements are explicitly supplied.
 An empty username and password clears credentials; deleting a source does too.
-Ordinary server backups retain source names, URLs, revisions, and tombstones,
+[Portable server backups](BACKUPS.md#portable-archives) retain source names, URLs, revisions, and tombstones,
 but remove source secrets, operation history, and OPDS app passwords. Restore
 requires re-entering catalog credentials and creating new app passwords.
+
+## Catalog proxy
 
 The hosted proxy requires normal authentication, browser session binding where
 applicable, and ownership of a live saved source. It supports public HTTP(S)
@@ -65,7 +67,7 @@ Only raster JPEG, PNG, WebP, and GIF covers are proxied; book responses download
 as attachments. Catalog-side 401/403 becomes an authentication-required error.
 
 Anonymous and HTTP Basic catalogs are supported. OAuth, DRM, lending, purchase,
-and indirect-acquisition flows are outside this implementation. The browser
+and indirect-acquisition flows are unsupported. The browser
 uses this proxy when connected; standalone browsers need catalog CORS support,
 while installed clients can use their native transport.
 
