@@ -83,15 +83,15 @@ Plain `go build` and Docker builds without identity arguments report `dev` / `un
 
 ## Reader connections
 
-In the installed reader, open **Settings > Server**, enter `alice@books.example.com`, find the server, confirm its displayed address, and sign in. Use Advanced server address for custom ports.
+In the installed reader, open **Settings > Sync**, enter `alice@books.example.com`, find the server, confirm its displayed address, and sign in. Use Advanced server address for custom ports.
 
-Native Windows/iOS sessions use OS credential storage. Standalone browser sessions stay in memory; the hosted WebUI uses 30-day HttpOnly, SameSite=Strict cookies (Secure on HTTPS) to preserve sign-in across refreshes and browser restarts.
+Native Windows, Linux and iOS sessions use OS credential storage. Standalone browser sessions stay in memory; the hosted WebUI uses 30-day HttpOnly, SameSite=Strict cookies (Secure on HTTPS) to preserve sign-in across refreshes and browser restarts.
 
 For a separate browser client, explicitly configure `-allowed-origins http://localhost:1420` (or `QUIRE_ALLOWED_ORIGINS`) to permit a browser client. No wildcard origins are accepted. Native apps do not need CORS configuration.
 
 Hosted browser caches are account-specific. Browser imports upload to the personal library; covers and metadata arrive automatically, and opening a book downloads its bytes. Revoking server access does not erase cached device files.
 
-Books, progress and passages sync automatically; appearance settings stay device-local. Book transfer is explicit in **Book details > Server copy**. Removing a server upload leaves reading data and existing device downloads intact. Identical watched and uploaded copies remain independent sources.
+Book metadata, progress and passages sync automatically; appearance settings stay device-local. Upload a local book with **Book details > Upload book file**. To upload existing and new books automatically while Quire is open, enable **Auto-upload books** in **Settings > Library**. Removing a server upload leaves reading data and existing device downloads intact. Identical watched and uploaded copies remain independent sources.
 
 Updated clients also sync the private-library passcode verifier and hidden/locked book settings per account. Update all clients to enforce these restrictions. Face ID and unlocked sessions remain device-local. Server backups include privacy settings; book files, metadata and backups are not encrypted, and these settings do not restrict administrator access to server files.
 
