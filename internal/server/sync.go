@@ -95,13 +95,14 @@ func validateOperation(op Operation) error {
 	switch op.Kind {
 	case "book":
 		var v struct {
-			Title   string   `json:"title"`
-			Format  string   `json:"format"`
-			Folder  string   `json:"folder"`
-			Folders []string `json:"folders"`
-			Author  string   `json:"author"`
-			Series  string   `json:"series"`
-			Volume  *float64 `json:"volume"`
+			InLibrary *bool    `json:"inLibrary"`
+			Title     string   `json:"title"`
+			Format    string   `json:"format"`
+			Folder    string   `json:"folder"`
+			Folders   []string `json:"folders"`
+			Author    string   `json:"author"`
+			Series    string   `json:"series"`
+			Volume    *float64 `json:"volume"`
 		}
 		if strictJSON(op.Value, &v) != nil || v.Title == "" || len(v.Title) > 2048 || len(v.Author) > 2048 || len(v.Series) > 2048 || !validFolder(v.Folder) || (v.Format != "" && !validBookFormat(v.Format)) {
 			return ErrInvalid
@@ -127,7 +128,7 @@ func validateOperation(op Operation) error {
 				return ErrInvalid
 			}
 		}
-		for _, field := range []string{"folder", "format"} {
+		for _, field := range []string{"folder", "format", "inLibrary"} {
 			if bytes.Equal(bytes.TrimSpace(fields[field]), []byte("null")) {
 				return ErrInvalid
 			}
@@ -234,6 +235,13 @@ func (s *Store) Sync(ctx context.Context, user string, req SyncRequest) (SyncRes
 			}
 			var incoming map[string]json.RawMessage
 			_ = json.Unmarshal(op.Value, &incoming)
+			if incoming["inLibrary"] == nil && len(record.Candidates) == 1 && !record.Candidates[0].Deleted {
+				var existing map[string]json.RawMessage
+				if json.Unmarshal(record.Candidates[0].Value, &existing) == nil && existing["inLibrary"] != nil {
+					incoming["inLibrary"] = existing["inLibrary"]
+					op.Value, _ = json.Marshal(incoming)
+				}
+			}
 			// A stale legacy candidate expresses only a primary-folder edit (or
 			// no folder edit). Do not turn that into an authoritative array:
 			// a resolver must retain the other candidate's extra memberships.

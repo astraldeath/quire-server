@@ -23,7 +23,83 @@ func (s *Store) accessibleOwner(user, book string) (string, error) {
 	err := s.db.QueryRow(`SELECT user_id FROM files WHERE book_id=? AND (user_id=? OR user_id IN(SELECT l.owner FROM libraries l JOIN library_members m ON m.library_id=l.id WHERE m.user_id=?)) ORDER BY user_id=? DESC LIMIT 1`, book, user, user, user).Scan(&owner)
 	return owner, err
 }
+
+// Upgrade untouched automatic seeds, retaining personal files and user edits.
+func (s *Store) migrateSharedMembership(user string) error {
+	rows, err := s.db.Query(`SELECT r.book_id,r.revision,r.candidates FROM records r WHERE r.user_id=? AND r.kind='book' AND NOT EXISTS(SELECT 1 FROM files f WHERE f.user_id=r.user_id AND f.book_id=r.book_id) AND EXISTS(SELECT 1 FROM files f JOIN libraries l ON l.owner=f.user_id JOIN library_members m ON m.library_id=l.id WHERE m.user_id=r.user_id AND f.book_id=r.book_id)`, user)
+	if err != nil {
+		return err
+	}
+	records := []Record{}
+	for rows.Next() {
+		var rec Record
+		var raw string
+		if err = rows.Scan(&rec.BookID, &rec.Revision, &raw); err != nil {
+			rows.Close()
+			return err
+		}
+		if json.Unmarshal([]byte(raw), &rec.Candidates) != nil || len(rec.Candidates) != 1 {
+			continue
+		}
+		c := &rec.Candidates[0]
+		var fields map[string]any
+		if c.Deleted || len(c.OperationID) != 64 || json.Unmarshal(c.Value, &fields) != nil {
+			continue
+		}
+		if _, present := fields["inLibrary"]; present {
+			continue
+		}
+		fields["inLibrary"] = false
+		c.Value, _ = json.Marshal(fields)
+		rec.Kind = "book"
+		rec.RecordID = "default"
+		rec.Revision++
+		records = append(records, rec)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for _, rec := range records {
+		var edited bool
+		if err = tx.QueryRow("SELECT EXISTS(SELECT 1 FROM operations WHERE user_id=? AND id=?)", user, rec.Candidates[0].OperationID).Scan(&edited); err != nil {
+			return err
+		}
+		if edited {
+			continue
+		}
+		candidates, _ := json.Marshal(rec.Candidates)
+		result, e := tx.Exec("UPDATE records SET revision=?,candidates=? WHERE user_id=? AND book_id=? AND kind='book' AND revision=?", rec.Revision, string(candidates), user, rec.BookID, rec.Revision-1)
+		if e != nil {
+			return e
+		}
+		count, e := result.RowsAffected()
+		if e != nil {
+			return e
+		}
+		if count == 0 {
+			continue
+		}
+		if _, err = tx.Exec("UPDATE cursors SET value=value+1 WHERE user_id=?", user); err != nil {
+			return err
+		}
+		encoded, _ := json.Marshal(rec)
+		if _, err = tx.Exec("INSERT INTO changes SELECT user_id,value,? FROM cursors WHERE user_id=?", string(encoded), user); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
 func (s *Store) sharedSeeds(user string) error {
+	if err := s.migrateSharedMembership(user); err != nil {
+		return err
+	}
 	rows, err := s.db.Query(`SELECT DISTINCT f.user_id,f.book_id FROM files f JOIN libraries l ON l.owner=f.user_id JOIN library_members m ON m.library_id=l.id WHERE m.user_id=? AND NOT EXISTS(SELECT 1 FROM records r WHERE r.user_id=m.user_id AND r.book_id=f.book_id AND r.kind='book')`, user)
 	if err != nil {
 		return err
@@ -71,6 +147,8 @@ func (s *Store) sharedSeeds(user string) error {
 				_ = json.Unmarshal(candidates[0].Value, &meta)
 			}
 		}
+		inLibrary := false
+		meta.InLibrary = &inLibrary
 		if err = seedBook(tx, user, i.id, "Untitled", meta); err != nil {
 			return err
 		}
@@ -173,6 +251,10 @@ func (a *api) libraryRoutes(mux *http.ServeMux) {
 			var revision int64
 			_ = a.store.db.QueryRow("SELECT revision FROM records WHERE user_id=? AND book_id=? AND kind='book' AND record_id='default'", member, id).Scan(&revision)
 			change := op
+			var fields map[string]json.RawMessage
+			_ = json.Unmarshal(change.Value, &fields)
+			delete(fields, "inLibrary")
+			change.Value, _ = json.Marshal(fields)
 			change.ID = randomID()
 			change.BaseRevision = revision
 			if _, err = a.store.Sync(context.Background(), member, SyncRequest{Operations: []Operation{change}}); err != nil {

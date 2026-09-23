@@ -19,14 +19,15 @@ import (
 )
 
 type bookMetadata struct {
-	Folders []string `json:"folders,omitempty"`
-	Folder  string   `json:"folder,omitempty"`
-	Format  string   `json:"format,omitempty"`
-	Title   string   `json:"title"`
-	Author  string   `json:"author"`
-	Series  string   `json:"series"`
-	Volume  *float64 `json:"volume"`
-	Cover   string   `json:"cover"`
+	InLibrary *bool    `json:"inLibrary,omitempty"`
+	Folders   []string `json:"folders,omitempty"`
+	Folder    string   `json:"folder,omitempty"`
+	Format    string   `json:"format,omitempty"`
+	Title     string   `json:"title"`
+	Author    string   `json:"author"`
+	Series    string   `json:"series"`
+	Volume    *float64 `json:"volume"`
+	Cover     string   `json:"cover"`
 }
 
 // Read only bounded archive members. Never execute publisher content or fetch external URLs.

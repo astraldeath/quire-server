@@ -550,6 +550,9 @@ func seedBook(tx *sql.Tx, user, book, title string, metadata bookMetadata, folde
 		title = metadata.Title
 	}
 	fields := map[string]any{"title": title, "author": metadata.Author, "series": metadata.Series, "volume": metadata.Volume}
+	if metadata.InLibrary != nil {
+		fields["inLibrary"] = *metadata.InLibrary
+	}
 	if metadata.Format != "" {
 		fields["format"] = metadata.Format
 	}
