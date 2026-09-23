@@ -1,12 +1,79 @@
 # Quire Server
 
-**Quire** is pronounced **“kwire”** (/kwaɪər/), rhyming with **choir**.
+Host your books, sync reading progress, and share libraries. Quire Server includes the browser reader and an administration panel, with separate accounts for personal books, notes, and highlights.
 
-Quire Server includes the Quire browser reader and an administration panel. Users have private progress, notes and highlights, with personal uploads and optional shared libraries.
+**[Docker image](https://github.com/astraldeath/quire-server/pkgs/container/quire-server)** · [Download the reader](https://github.com/astraldeath/quire/releases/latest) · [Deployment guide](docs/PRODUCTION.md) · [API reference](docs/API.md)
 
-## Browser setup
+### iOS sideloading
 
-Build the reader alongside this repository:
+<p>
+  <a href="https://intradeus.github.io/http-protocol-redirector?r=altstore://source?url=https://raw.githubusercontent.com/astraldeath/quire/refs/heads/main/repo/source.json"><img alt="AltStore Source" src="https://img.shields.io/badge/open_in_app-_?style=for-the-badge&amp;label=AltStore&amp;labelColor=black&amp;color=728EAE"></a>
+  <a href="https://intradeus.github.io/http-protocol-redirector?r=feather://source/https://raw.githubusercontent.com/astraldeath/quire/refs/heads/main/repo/source.json"><img alt="Feather Source" src="https://img.shields.io/badge/open_in_app-_?style=for-the-badge&amp;label=Feather&amp;labelColor=black&amp;color=728EAE"></a>
+  <a href="https://intradeus.github.io/http-protocol-redirector?r=sidestore://source?url=https://raw.githubusercontent.com/astraldeath/quire/refs/heads/main/repo/source.json"><img alt="SideStore Source" src="https://img.shields.io/badge/open_in_app-_?style=for-the-badge&amp;label=SideStore&amp;labelColor=black&amp;color=728EAE"></a>
+</p>
+
+[Direct source URL](https://raw.githubusercontent.com/astraldeath/quire/refs/heads/main/repo/source.json). The reader is also available for Windows, Linux, and Android. iOS IPAs need signing in your sideloading app.
+
+## Quick start
+
+The prebuilt Docker image includes the server and WebUI for AMD64 and ARM64.
+
+```sh
+mkdir quire-server
+cd quire-server
+curl -fsSLO https://raw.githubusercontent.com/astraldeath/quire-server/main/compose.yaml
+printf 'QUIRE_PUBLIC_URL=https://books.example.com\n' > .env
+docker compose up -d
+docker compose logs quire
+```
+
+Replace `https://books.example.com` with your public address. Point your reverse proxy or host-installed Cloudflare Tunnel at `http://127.0.0.1:8080`. The supplied Compose file binds that port to localhost. A Cloudflare Tunnel handles public HTTPS; it does not need Caddy alongside it.
+
+Open your public address and enter the one-time setup code from the logs to create the administrator account. For a local trial, set `QUIRE_PUBLIC_URL=http://localhost:8080` and open that address instead.
+
+Books and account data are stored in the `quire-data` volume. See [production deployment](docs/PRODUCTION.md) for proxy setup, storage, and upgrades.
+
+## What it provides
+
+- A browser reader with personal uploads and shared libraries.
+- Progress, bookmarks, highlights, notes, folders, privacy settings, and reading-history sync with Quire apps.
+- Account invitations, roles, device revocation, and shared-library membership.
+- Watched folders that import books without moving the source files.
+- MangaBaka OAuth and tracking for the hosted reader.
+- OPDS 1.2 and 2.0 feeds with revocable app passwords, plus a proxy for external catalogs.
+- Server backups and restore commands.
+
+Supported files include EPUB, PDF, CBZ, CBR, CB7, FB2/FBZ, and DRM-free MOBI/AZW3. Uploads default to 2 GiB per book. [File formats and limits](docs/OPERATIONS.md) explains configuration and archive support.
+
+## Updates
+
+Back up the server data before upgrading, then run:
+
+```sh
+docker compose pull
+docker compose up -d
+```
+
+The data volume is retained. The `latest` image follows successful builds from `main`; version and commit tags are also available.
+
+The image uses reader commit `0610e9ada1e3eb0c7420127dff6d8f2d5026034f`. Source builds can select another revision with `QUIRE_READER_REF`.
+
+## Documentation
+
+| Guide | Contents |
+| --- | --- |
+| [Production deployment](docs/PRODUCTION.md) | Docker, HTTPS, reverse proxies, and upgrades |
+| [Operations](docs/OPERATIONS.md) | Commands, configuration, accounts, watched folders, and file limits |
+| [Backups](docs/BACKUPS.md) | Backup, restore, and recovery |
+| [Tracking](docs/tracking.md) | MangaBaka OAuth setup |
+| [OPDS](docs/OPDS.md) | Catalog feeds, app passwords, and external sources |
+| [API](docs/API.md) | Authentication, uploads, and synchronization |
+| [OpenAPI contract](api/openapi.json) | Endpoint schemas |
+| [CI caches](docs/CI-CACHES.md) | Workflow cache configuration |
+
+## Development
+
+Source builds require Go 1.27.1 or newer. Build the browser reader alongside this repository:
 
 ```sh
 cd ../quire-reader
@@ -17,61 +84,19 @@ go build -o bin/quire-server ./cmd/quire-server
 bin/quire-server serve -web-dir ../quire-reader/dist-web
 ```
 
-Open `http://localhost:8080`. On a new installation the server prints a one-time setup code to its console. Enter that code and choose the initial administrator username and password. The code changes when the server restarts; setup closes permanently once an admin exists. For an existing installation, run `bin/quire-server admin-promote -username NAME` locally to explicitly promote an existing account instead. Existing accounts, books and reading data are preserved.
-
-The browser uses the same reader code as the installed apps. Hosted builds have same-server sign-in and account-specific IndexedDB caches. Hosted browser sessions use 30-day HttpOnly cookies and survive refresh and browser restarts. book imports upload to the user's personal library. Covers and metadata arrive automatically; book bytes download on opening. Revoking server access does not remotely erase cached files.
-
-## Administration
-
-- **Overview:** account count, active book copies and active book storage (not total disk usage or orphaned snapshots).
-- **Accounts:** roles, disable/enable and revoke devices. The last active admin is protected. Password recovery remains available through the local `password-reset` command. Users can change their own passwords in the account menu; this signs out all sessions.
-- **Invitations:** single-use codes/links, seven-day expiry, revoke unused invitations, and preassign shared libraries. New accounts are always members. Invite secrets are hashed in storage and shown only when issued.
-- **Libraries:** shared collections, membership, book uploads, common metadata editing and uploaded-copy removal. Shared library storage is separate from personal accounts. Administration has no endpoint for reading members' annotations or positions.
-- **Watched folders:** register server paths against a personal or shared library; scan automatically when added or on demand, review last scan errors, remove watches without modifying source files.
-- **Settings:** server name and scan interval, including manual-only scans.
-
-Data is migrated on opening. Back up the full data directory with the service stopped before upgrading. Keep it out of the public web directory. The `-web-dir` / `QUIRE_WEB_DIR` directory must contain only the trusted reader build; API responses and UI documents have separate content-security policies. Hosted chapter loading uses sanitized srcdoc documents; native rendering is unchanged.
-
-## Deployment and reference
-
-The prebuilt image includes the server and WebUI for AMD64 and ARM64. Set `QUIRE_PUBLIC_URL` to your public HTTPS address, then start it:
-
-```sh
-docker compose pull
-docker compose up -d
-docker compose logs quire
-```
-
-Updates use the same pull and up commands; your named data volume is retained. `latest` follows successful `main` builds. Version tags and `sha-<full-commit>` tags are also published.
-
-To build locally instead: `docker compose -f compose.yaml -f compose.build.yaml up -d --build`. Source builds require Go 1.27.1 or newer.
-
-The image pins reader commit `0610e9ada1e3eb0c7420127dff6d8f2d5026034f`. Use `QUIRE_READER_REF` to build another reviewed revision.
-
-- [Production deployment and upgrades](docs/PRODUCTION.md)
-- [Server commands, Docker, reader connections, and watched folders](docs/OPERATIONS.md)
-- [Backup and restore](docs/BACKUPS.md)
-- [MangaBaka OAuth and tracking](docs/tracking.md)
-- [OPDS catalogs, app passwords, and external sources](docs/OPDS.md)
-- [API and synchronization semantics](docs/API.md)
-- [OpenAPI contract](api/openapi.json)
-
-## Development
+Run the server checks:
 
 ```sh
 go test ./...
 go vet ./...
-go build ./cmd/quire-server
 ```
 
-Format Go changes with `gofmt`. Tests use isolated temporary databases. Use incremental Conventional Commits; never commit runtime data, books, credentials, or generated binaries.
+To build the Docker image locally:
 
-The server is licensed under [AGPL-3.0-only](LICENSE). The API contract is separately licensed under MIT, allowing the [MIT reader](https://github.com/astraldeath/quire) to generate client code without copying server implementation.
+```sh
+docker compose -f compose.yaml -f compose.build.yaml up -d --build
+```
 
-Supported files: EPUB (including fixed layout), PDF, CBZ, CBR (RAR4/RAR5), CB7 (7-Zip), FB2/FBZ, and DRM-free MOBI/AZW3. Uploads and watched-file ingestion default to 2 GiB per book. Set `QUIRE_MAX_UPLOAD_BYTES` or `-max-upload-bytes` to an integer from 1 through 8589934592 (8 GiB); the flag overrides the environment. Invalid supplied values fail startup. Downloads and backups preserve the original file format. Watched directories seed nested library folders; later user organization is preserved. Folder assignments sync with book metadata.
+## License
 
-Discovery (`GET /.well-known/quire`) advertises `limits.maxUploadBytes`, `limits.maxDownloadBytes` and the `server-assigned-upload` capability. Authenticated clients can stream `application/octet-stream` to `POST /v1/books/files`; administrators can use `POST /v1/admin/libraries/{library}/books`. Both return HTTP 201 with `{bookId, size}` after computing SHA-256, validating the format and persisting availability. HTTP 413 means the configured upload limit was exceeded, including for chunked requests. Hash-addressed PUT uploads remain supported.
-
-Downloads and backup/restore retain an independent 8 GiB per-object format ceiling, so lowering the upload policy does not prevent existing books from being downloaded or backed up. Archives retain finite entry counts, safe paths, bounded metadata/image extraction, and at most 512 MiB of expansion beyond the stored archive size (EPUB retains its 512 MiB expanded ceiling). Individual comic images remain limited to 32 MiB and 100 million pixels. Reverse-proxy request limits and timeouts must also allow the intended upload size.
-
-CBR and CB7 import uses pure-Go decoders; no server-side archive executable is required. Original archives are preserved for downloads and backup/restore. ComicInfo.xml supplies title, writer, and series; the first decodable image by filename supplies the cover. Encrypted, multipart, linked, unsafe-path, and invalid-image archives are rejected. RAR and 7-Zip dictionaries are capped at 64 MiB. CB7 supports Copy, LZMA/LZMA2, Deflate, Bzip2, and associated filters; PPMd, Zstandard, Brotli, and LZ4 archives are unsupported. The encoded 7-Zip header is limited to 8 MiB. Archive members are inspected in memory and never extracted onto the server filesystem.
+The server is [AGPL-3.0-only](LICENSE). The API contract is separately licensed under MIT, as is the [Quire reader](https://github.com/astraldeath/quire). Quire is pronounced “kwire”, rhyming with “choir”.
