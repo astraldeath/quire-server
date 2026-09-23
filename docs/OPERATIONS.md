@@ -91,6 +91,8 @@ For a separate browser client, explicitly configure `-allowed-origins http://loc
 
 Hosted browser caches are account-specific. Browser imports upload to the personal library; covers and metadata arrive automatically, and opening a book downloads its bytes. Revoking server access does not erase cached device files.
 
+Updated readers show shared collections under **Shared libraries** in the library title menu. Reading there keeps personal reading data without adding the book to **All books**. **Add to library** syncs personal membership and preserves existing progress and notes. Update both the server and reader to use this separation.
+
 Book metadata, progress and passages sync automatically; appearance settings stay device-local. Upload a local book with **Book details > Upload book file**. To upload existing and new books automatically while Quire is open, enable **Auto-upload books** in **Settings > Library**. Removing a server upload leaves reading data and existing device downloads intact. Identical watched and uploaded copies remain independent sources.
 
 Updated clients also sync the private-library passcode verifier and hidden/locked book settings per account. Update all clients to enforce these restrictions. Face ID and unlocked sessions remain device-local. Server backups include privacy settings; book files, metadata and backups are not encrypted, and these settings do not restrict administrator access to server files.

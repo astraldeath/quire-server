@@ -29,6 +29,8 @@ Removing a file does not remove reading data. Identical watched and uploaded fil
 
 Each operation contains a stable `id`, SHA-256 `bookId`, `kind` (`book`, `position`, `annotation`), `recordId`, `baseRevision`, `deleted`, and a typed `value`. Book and position record IDs are `default`; annotation IDs remain stable across devices. Device timestamps, file bytes and cover data are excluded from these records. API strings are plain data, never trusted HTML.
 
+Book values can include `inLibrary`, a boolean controlling personal-library membership. Shared-library seeds set it to `false`; adding a shared book sets it to `true` without replacing its position or annotations. An omitted field preserves existing membership, or defaults to personal for a new record. Membership does not grant file access: downloads still require an owned file or shared-library access.
+
 Example request after authentication:
 
 ```json
