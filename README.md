@@ -56,7 +56,7 @@ docker compose up -d
 
 The data volume is retained. The `latest` image follows successful builds from `main`; version and commit tags are also available.
 
-The image uses reader commit `4c735bb2645494b83d2c04b3d375c373119a1849`. Source builds can select another revision with `QUIRE_READER_REF`.
+The image uses reader commit `f380fc12f6c5f11612182cf1a9fb0344be8e3578`. Source builds can select another revision with `QUIRE_READER_REF`.
 
 ## Documentation
 
